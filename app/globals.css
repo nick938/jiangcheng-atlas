@@ -213,6 +213,8 @@ button:focus-visible, input:focus-visible { outline: 3px solid rgba(69, 196, 134
 .detail-visual::before { bottom: 18px; transform: rotate(-5deg); }
 .detail-visual::after { bottom: -5px; transform: rotate(4deg); }
 .detail-visual > span { font-size: 45px; font-weight: 800; text-shadow: 0 8px 26px rgba(0, 0, 0, .18); }
+.detail-visual.has-image { background-position: center; background-size: cover; }
+.detail-visual.has-image > span { opacity: 0; }
 .detail-visual small { position: absolute; bottom: 10px; left: 14px; font: 600 8px/1 var(--font-latin); letter-spacing: .06em; opacity: .8; }
 .detail-body { padding: 20px; }
 .detail-tags { display: flex; flex-wrap: wrap; gap: 6px; }

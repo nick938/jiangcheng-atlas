@@ -9,7 +9,9 @@
 - 地点详情、坐标与分享 URL
 - 桌面端与移动端响应式界面
 - Cloudflare D1 地点数据库
-- Cloudflare R2 媒体对象存储绑定
+- 管理员登录、地点创建/编辑/发布/归档
+- Cloudflare R2 地点封面上传与同源媒体读取
+- HttpOnly 签名会话、同源校验、登录/写操作限流和审计日志
 - OpenNext 部署到 Cloudflare Workers
 - D1 未初始化时自动回退到内置首批数据
 
@@ -31,6 +33,15 @@ bun run dev
 
 浏览器打开 `http://localhost:3000`。
 
+本地管理台需要在不会提交的 `.dev.vars` 中配置：
+
+```dotenv
+ADMIN_PASSWORD=至少十二位的本地管理密码
+ADMIN_SESSION_SECRET=一段随机的长字符串
+```
+
+管理入口为 `http://localhost:3000/admin`。
+
 需要验证真实 Workers 运行时和本地 D1/R2 绑定时：
 
 ```bash
@@ -47,6 +58,8 @@ bun run preview
 wrangler login
 wrangler d1 create jiangcheng-atlas-db
 wrangler r2 bucket create jiangcheng-atlas-media
+wrangler secret put ADMIN_PASSWORD
+wrangler secret put ADMIN_SESSION_SECRET
 bun run cf-typegen
 bun run db:migrate:remote
 bun run deploy
@@ -56,10 +69,11 @@ bun run deploy
 
 ## 数据结构
 
-首个迁移文件位于 `migrations/0001_initial.sql`，包含：
+迁移文件位于 `migrations/`，包含：
 
 - `categories`：地点分类
 - `places`：地点正文、坐标、行政区和发布状态
 - `place_images`：R2 对象键与地点的关联
+- `admin_audit_logs`：管理写操作与登录事件审计
 
-公开版本目前只提供读取接口 `GET /api/places`。在登录和权限控制完成前，不开放管理写入接口。
+公开地图只读取 `published` 地点。所有管理接口都要求有效的签名会话；新增、编辑、归档与图片上传还会验证同源请求并应用 Cloudflare Rate Limiting。

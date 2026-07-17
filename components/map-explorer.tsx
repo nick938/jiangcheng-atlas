@@ -312,7 +312,13 @@ export function MapExplorer({ initialPlaces }: MapExplorerProps) {
       {selectedPlace && (
         <section className="place-detail" aria-live="polite">
           <button className="detail-close" type="button" onClick={clearSelection} aria-label="关闭地点详情">×</button>
-          <div className="detail-visual" style={{ "--detail-color": categoryMeta[selectedPlace.categoryId].color } as React.CSSProperties}>
+          <div
+            className={`detail-visual ${selectedPlace.imageUrl ? "has-image" : ""}`}
+            style={{
+              "--detail-color": categoryMeta[selectedPlace.categoryId].color,
+              ...(selectedPlace.imageUrl ? { backgroundImage: `linear-gradient(180deg, transparent 45%, rgba(17, 28, 26, .72)), url(${JSON.stringify(selectedPlace.imageUrl)})` } : {}),
+            } as React.CSSProperties}
+          >
             <span>{categoryMeta[selectedPlace.categoryId].icon}</span>
             <small>{selectedPlace.latitude.toFixed(4)}°N · {selectedPlace.longitude.toFixed(4)}°E</small>
           </div>

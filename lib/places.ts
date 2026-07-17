@@ -23,6 +23,13 @@ export type Place = {
   address: string;
   categoryId: CategoryId;
   featured: boolean;
+  imageUrl?: string;
+};
+
+export type PlaceStatus = "draft" | "published" | "archived";
+
+export type AdminPlace = Place & {
+  status: PlaceStatus;
 };
 
 export const seedPlaces: Place[] = [

@@ -24,5 +24,23 @@
       "binding": "MEDIA",
       "bucket_name": "jiangcheng-atlas-media"
     }
+  ],
+  "ratelimits": [
+    {
+      "name": "ADMIN_LOGIN_RATE_LIMITER",
+      "namespace_id": "731104",
+      "simple": {
+        "limit": 5,
+        "period": 60
+      }
+    },
+    {
+      "name": "ADMIN_MUTATION_RATE_LIMITER",
+      "namespace_id": "731105",
+      "simple": {
+        "limit": 60,
+        "period": 60
+      }
+    }
   ]
 }
