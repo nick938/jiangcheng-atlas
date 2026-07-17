@@ -1,36 +1,65 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# 江城图志 · Jiangcheng Atlas
 
-## Getting Started
+一个以武汉为主题的城市互动地图。沿两江四岸收录地标、湖泊公园、人文艺术、街区、高校与过早地点，并通过可分享的地图坐标讲述城市。
 
-First, run the development server:
+## 第一版功能
+
+- MapLibre 全屏互动地图与地点聚合
+- 地点搜索、分类筛选和地图定位
+- 地点详情、坐标与分享 URL
+- 桌面端与移动端响应式界面
+- Cloudflare D1 地点数据库
+- Cloudflare R2 媒体对象存储绑定
+- OpenNext 部署到 Cloudflare Workers
+- D1 未初始化时自动回退到内置首批数据
+
+## 技术栈
+
+- Next.js 16 / React 19 / TypeScript
+- MapLibre GL JS / OpenFreeMap
+- Cloudflare Workers / D1 / R2
+- `@opennextjs/cloudflare` / Wrangler
+
+## 本地开发
 
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+bun install
+bun run cf-typegen
+bun run db:migrate:local
+bun run dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+浏览器打开 `http://localhost:3000`。
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+需要验证真实 Workers 运行时和本地 D1/R2 绑定时：
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+```bash
+bun run preview
+```
 
-## Learn More
+浏览器打开 `http://localhost:8787`。
 
-To learn more about Next.js, take a look at the following resources:
+## Cloudflare 部署
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+首次部署前，需要在 Cloudflare 创建同名资源，并把真实的 D1 `database_id` 写入 `wrangler.jsonc`：
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+```bash
+wrangler login
+wrangler d1 create jiangcheng-atlas-db
+wrangler r2 bucket create jiangcheng-atlas-media
+bun run cf-typegen
+bun run db:migrate:remote
+bun run deploy
+```
 
-## Deploy on Vercel
+配置使用 Workers Bindings 直接访问 D1 和 R2，不在代码中保存 Cloudflare 密钥。
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+## 数据结构
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+首个迁移文件位于 `migrations/0001_initial.sql`，包含：
+
+- `categories`：地点分类
+- `places`：地点正文、坐标、行政区和发布状态
+- `place_images`：R2 对象键与地点的关联
+
+公开版本目前只提供读取接口 `GET /api/places`。在登录和权限控制完成前，不开放管理写入接口。
