@@ -21,6 +21,38 @@ function routeGeoJson(routes: CyclingRoute[]) {
   };
 }
 
+function routePointGeoJson(routes: CyclingRoute[]) {
+  return {
+    type: "FeatureCollection" as const,
+    features: routes.map((route) => ({
+      type: "Feature" as const,
+      geometry: { type: "Point" as const, coordinates: [route.startLongitude, route.startLatitude] },
+      properties: { id: route.id, color: route.color, name: route.name },
+    })),
+  };
+}
+
+function activityGeoJson(activities: RideActivity[]) {
+  return {
+    type: "FeatureCollection" as const,
+    features: activities.filter((activity) => activity.status === "open").map((activity, index) => {
+      const angle = (index % 8) * Math.PI / 4;
+      const offset = Math.floor(index / 8) + 1;
+      return {
+        type: "Feature" as const,
+        geometry: {
+          type: "Point" as const,
+          coordinates: [
+            activity.meetingLongitude + Math.cos(angle) * .0011 * offset,
+            activity.meetingLatitude + Math.sin(angle) * .0008 * offset,
+          ],
+        },
+        properties: { id: activity.id, routeId: activity.routeId, color: activity.routeColor, title: activity.title },
+      };
+    }),
+  };
+}
+
 function dateLabel(value: string) {
   return new Intl.DateTimeFormat("zh-CN", { month: "short", day: "numeric", weekday: "short", hour: "2-digit", minute: "2-digit" }).format(new Date(value));
 }
@@ -37,13 +69,16 @@ export function EastLakeHub() {
   const map = useRef<MapLibreMap | null>(null);
   const [snapshot, setSnapshot] = useState<CommunitySnapshot>({ routes: [], activities: [], user: null });
   const [selectedRouteId, setSelectedRouteId] = useState<string | null>(null);
+  const [selectedActivityId, setSelectedActivityId] = useState<string | null>(null);
   const [tab, setTab] = useState<"routes" | "activities">("routes");
+  const [panelOpen, setPanelOpen] = useState(true);
   const [loading, setLoading] = useState(true);
   const [notice, setNotice] = useState("");
   const [authOpen, setAuthOpen] = useState(false);
   const [createOpen, setCreateOpen] = useState(false);
 
   const selectedRoute = useMemo(() => snapshot.routes.find((item) => item.id === selectedRouteId) ?? snapshot.routes[0] ?? null, [selectedRouteId, snapshot.routes]);
+  const selectedActivity = useMemo(() => snapshot.activities.find((item) => item.id === selectedActivityId) ?? null, [selectedActivityId, snapshot.activities]);
 
   const refresh = useCallback(async () => {
     const response = await fetch("/api/east-lake", { cache: "no-store" });
@@ -85,25 +120,69 @@ export function EastLakeHub() {
     const instance = map.current;
     if (!instance || snapshot.routes.length === 0) return;
     const update = () => {
-      const data = routeGeoJson(snapshot.routes);
+      const lineData = routeGeoJson(snapshot.routes);
+      const routePoints = routePointGeoJson(snapshot.routes);
+      const activityPoints = activityGeoJson(snapshot.activities);
       const existing = instance.getSource("east-lake-routes") as GeoJSONSource | undefined;
-      if (existing) existing.setData(data);
+      if (existing) {
+        existing.setData(lineData);
+        (instance.getSource("route-points") as GeoJSONSource | undefined)?.setData(routePoints);
+        (instance.getSource("activity-points") as GeoJSONSource | undefined)?.setData(activityPoints);
+      }
       else {
-        instance.addSource("east-lake-routes", { type: "geojson", data });
+        instance.addSource("east-lake-routes", { type: "geojson", data: lineData });
         instance.addLayer({ id: "routes-shadow", type: "line", source: "east-lake-routes", paint: { "line-color": "#07100f", "line-width": 9, "line-opacity": .65 } });
         instance.addLayer({ id: "routes-main", type: "line", source: "east-lake-routes", paint: { "line-color": ["get", "color"], "line-width": 5, "line-opacity": ["case", ["==", ["get", "id"], selectedRouteId ?? ""], 1, .35] } });
+        instance.addSource("route-points", { type: "geojson", data: routePoints });
+        instance.addLayer({ id: "route-point-halo", type: "circle", source: "route-points", paint: { "circle-radius": 17, "circle-color": "#07100f", "circle-opacity": .78 } });
+        instance.addLayer({ id: "route-point-main", type: "circle", source: "route-points", paint: { "circle-radius": 11, "circle-color": ["get", "color"], "circle-stroke-width": 2, "circle-stroke-color": "#f7f4ea" } });
+        instance.addLayer({ id: "route-point-label", type: "symbol", source: "route-points", layout: { "text-field": ["get", "name"], "text-size": 11, "text-offset": [0, 1.8], "text-anchor": "top" }, paint: { "text-color": "#10211e", "text-halo-color": "rgba(255,255,255,.95)", "text-halo-width": 2 } });
+        instance.addSource("activity-points", { type: "geojson", data: activityPoints });
+        instance.addLayer({ id: "activity-point-halo", type: "circle", source: "activity-points", paint: { "circle-radius": 20, "circle-color": "#07100f", "circle-opacity": .82 } });
+        instance.addLayer({ id: "activity-point-main", type: "circle", source: "activity-points", paint: { "circle-radius": 14, "circle-color": "#d8ff3e", "circle-stroke-width": 3, "circle-stroke-color": ["get", "color"] } });
+        instance.addLayer({ id: "activity-point-glyph", type: "symbol", source: "activity-points", layout: { "text-field": "骑", "text-size": 12, "text-font": ["Noto Sans Regular"] }, paint: { "text-color": "#07100f" } });
+        instance.addLayer({ id: "activity-point-label", type: "symbol", source: "activity-points", minzoom: 12, layout: { "text-field": ["get", "title"], "text-size": 11, "text-offset": [0, 2.25], "text-anchor": "top" }, paint: { "text-color": "#10211e", "text-halo-color": "rgba(255,255,255,.95)", "text-halo-width": 2 } });
+        instance.on("click", "route-point-main", (event) => {
+          const feature = event.features?.[0];
+          const id = feature?.properties?.id as string | undefined;
+          if (!id || feature?.geometry.type !== "Point") return;
+          setSelectedActivityId(null); setSelectedRouteId(id); setTab("routes");
+          instance.flyTo({ center: feature.geometry.coordinates as [number, number], zoom: 13.5, duration: 800 });
+        });
+        instance.on("click", "activity-point-main", (event) => {
+          const feature = event.features?.[0];
+          const id = feature?.properties?.id as string | undefined;
+          const routeId = feature?.properties?.routeId as string | undefined;
+          if (!id || feature?.geometry.type !== "Point") return;
+          setSelectedActivityId(id); if (routeId) setSelectedRouteId(routeId); setTab("activities");
+          instance.flyTo({ center: feature.geometry.coordinates as [number, number], zoom: 14.2, duration: 800 });
+        });
+        for (const layer of ["route-point-main", "activity-point-main"]) {
+          instance.on("mouseenter", layer, () => { instance.getCanvas().style.cursor = "pointer"; });
+          instance.on("mouseleave", layer, () => { instance.getCanvas().style.cursor = ""; });
+        }
       }
       if (instance.getLayer("routes-main")) instance.setPaintProperty("routes-main", "line-opacity", ["case", ["==", ["get", "id"], selectedRouteId ?? snapshot.routes[0].id], 1, .3]);
+      if (instance.getLayer("route-point-main")) instance.setPaintProperty("route-point-main", "circle-radius", ["case", ["==", ["get", "id"], selectedRouteId ?? snapshot.routes[0].id], 14, 10]);
+      if (instance.getLayer("activity-point-main")) instance.setPaintProperty("activity-point-main", "circle-radius", ["case", ["==", ["get", "id"], selectedActivityId ?? ""], 18, 14]);
     };
     if (instance.isStyleLoaded()) update(); else instance.once("load", update);
-  }, [selectedRouteId, snapshot.routes]);
+  }, [selectedActivityId, selectedRouteId, snapshot.activities, snapshot.routes]);
 
   const selectRoute = (route: CyclingRoute) => {
+    setSelectedActivityId(null);
     setSelectedRouteId(route.id);
     if (route.geometry.length) {
       const bounds = route.geometry.reduce((box, point) => box.extend(point), new maplibregl.LngLatBounds(route.geometry[0], route.geometry[0]));
       map.current?.fitBounds(bounds, { padding: { top: 110, right: 390, bottom: 80, left: 430 }, duration: 900 });
     }
+  };
+
+  const selectActivity = (activity: RideActivity) => {
+    setSelectedActivityId(activity.id);
+    setSelectedRouteId(activity.routeId);
+    setTab("activities");
+    map.current?.flyTo({ center: [activity.meetingLongitude, activity.meetingLatitude], zoom: 14.2, duration: 850 });
   };
 
   const mutateActivity = async (activity: RideActivity, action: "join" | "leave" | "cancel") => {
@@ -125,7 +204,8 @@ export function EastLakeHub() {
       <button className={styles.account} onClick={() => setAuthOpen(true)}>{snapshot.user ? snapshot.user.displayName : "登录 / 注册"}</button>
     </header>
 
-    <aside className={styles.leftPanel}>
+    <button className={`${styles.panelToggle} ${panelOpen ? styles.panelToggleOpen : ""}`} type="button" aria-expanded={panelOpen} onClick={() => setPanelOpen((open) => !open)}>{panelOpen ? "‹ 收起" : "› 展开路线"}</button>
+    <aside className={`${styles.leftPanel} ${panelOpen ? "" : styles.panelCollapsed}`} aria-hidden={!panelOpen}>
       <div className={styles.missionHead}><span>江城差事 · 001</span><h1>今天，骑进东湖。</h1><p>选一条线，看攻略，或者召集一群同路的人。这里不是导航，是武汉骑行故事的起点。</p></div>
       <div className={styles.tabs}>
         <button className={tab === "routes" ? styles.activeTab : ""} onClick={() => setTab("routes")}>路线攻略</button>
@@ -137,11 +217,18 @@ export function EastLakeHub() {
           <span className={styles.routeNumber}>0{index + 1}</span><span className={styles.routeStripe} style={{ background: route.color }} />
           <span><b>{route.name}</b><small>{route.subtitle}</small><em>{route.distanceKm} KM · {Math.round(route.durationMinutes / 5) * 5} 分钟 · {difficulty[route.difficulty]}</em></span>
         </button>)}
-        {tab === "activities" && (snapshot.activities.length ? snapshot.activities.map((activity) => <ActivityCard key={activity.id} activity={activity} onAction={mutateActivity} />) : <div className={styles.empty}>还没有人发起差事。<br />做今天的第一个召集人。</div>)}
+        {tab === "activities" && (snapshot.activities.length ? snapshot.activities.map((activity) => <ActivityCard key={activity.id} activity={activity} selected={activity.id === selectedActivityId} onSelect={() => selectActivity(activity)} onAction={mutateActivity} />) : <div className={styles.empty}>还没有人发起差事。<br />做今天的第一个召集人。</div>)}
       </div>
     </aside>
 
-    {selectedRoute && <section className={styles.routeDetail}>
+    {selectedActivity ? <section className={styles.routeDetail}>
+      <div className={styles.activityHero} style={{ "--route": selectedActivity.routeColor } as React.CSSProperties}><span>RIDE MISSION</span><b>骑</b><small>{selectedActivity.status === "open" ? "正在招募" : "已取消"}</small></div>
+      <div className={styles.detailBody}><p className={styles.kicker}>{selectedActivity.routeName} · {paceNames[selectedActivity.pace]}</p><h2>{selectedActivity.title}</h2><p>{selectedActivity.details}</p>
+        <div className={styles.activityFacts}><span><small>出发时间</small>{dateLabel(selectedActivity.startsAt)}</span><span><small>集合点</small>{selectedActivity.meetingName}</span><span><small>当前队伍</small>{selectedActivity.joinedCount} / {selectedActivity.capacity} 人</span></div>
+        <div className={styles.detailOwner}><span className={styles.avatar} style={{ background: selectedActivity.creator.avatarColor }}>{selectedActivity.creator.displayName.slice(0, 1)}</span><b>{selectedActivity.creator.displayName}</b><small>发起人</small></div>
+        {selectedActivity.status === "open" && <button className={styles.primary} disabled={selectedActivity.joinedCount >= selectedActivity.capacity && !selectedActivity.joinedByMe} onClick={() => mutateActivity(selectedActivity, selectedActivity.isOwner ? "cancel" : selectedActivity.joinedByMe ? "leave" : "join")}>{selectedActivity.isOwner ? "取消差事" : selectedActivity.joinedByMe ? "退出差事" : selectedActivity.joinedCount >= selectedActivity.capacity ? "队伍已满" : "加入这次骑行"}</button>}
+      </div>
+    </section> : selectedRoute && <section className={styles.routeDetail}>
       <div className={styles.routeHero} style={{ "--route": selectedRoute.color } as React.CSSProperties}><span>ROUTE FILE</span><b>{selectedRoute.distanceKm}</b><small>公里 · 示意线</small></div>
       <div className={styles.detailBody}><p className={styles.kicker}>{difficulty[selectedRoute.difficulty]} · 约 {selectedRoute.durationMinutes} 分钟</p><h2>{selectedRoute.name}</h2><p>{selectedRoute.description}</p>
         <div className={styles.highlights}>{selectedRoute.highlights.map((item) => <span key={item}>◆ {item}</span>)}</div>
@@ -150,6 +237,7 @@ export function EastLakeHub() {
       </div>
     </section>}
 
+    <div className={styles.legend} aria-label="地图图例"><b>地图图例</b><span><i className={styles.legendLine} />路线示意</span><span><i className={styles.legendStart} />路线起点</span><span><i className={styles.legendRide}>骑</i>骑行差事</span></div>
     <div className={styles.disclaimer}>路线为探索示意，非专业导航 · 请遵守现场标识与骑行规定</div>
     {notice && <button className={styles.notice} onClick={() => setNotice("")}>{notice} ×</button>}
     {authOpen && <AuthModal user={snapshot.user} onClose={() => setAuthOpen(false)} onDone={async () => { await refresh(); setAuthOpen(false); }} />}
@@ -157,13 +245,13 @@ export function EastLakeHub() {
   </main>;
 }
 
-function ActivityCard({ activity, onAction }: { activity: RideActivity; onAction: (activity: RideActivity, action: "join" | "leave" | "cancel") => void }) {
+function ActivityCard({ activity, selected, onSelect, onAction }: { activity: RideActivity; selected: boolean; onSelect: () => void; onAction: (activity: RideActivity, action: "join" | "leave" | "cancel") => void }) {
   const full = activity.joinedCount >= activity.capacity;
-  return <article className={styles.activityCard}>
+  return <article className={`${styles.activityCard} ${selected ? styles.activitySelected : ""}`} role="button" tabIndex={0} onClick={onSelect} onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") onSelect(); }}>
     <div className={styles.activityTop}><span style={{ background: activity.routeColor }} /> <b>{activity.title}</b><em>{activity.status === "open" ? "招募中" : "已取消"}</em></div>
     <p>{activity.details}</p><dl><div><dt>时间</dt><dd>{dateLabel(activity.startsAt)}</dd></div><div><dt>集合</dt><dd>{activity.meetingName}</dd></div><div><dt>队伍</dt><dd>{activity.joinedCount}/{activity.capacity} · {paceNames[activity.pace]}</dd></div></dl>
     <footer><span className={styles.avatar} style={{ background: activity.creator.avatarColor }}>{activity.creator.displayName.slice(0, 1)}</span><span>{activity.creator.displayName} 发起</span>
-      {activity.status === "open" && <button disabled={full && !activity.joinedByMe} onClick={() => onAction(activity, activity.isOwner ? "cancel" : activity.joinedByMe ? "leave" : "join")}>{activity.isOwner ? "取消差事" : activity.joinedByMe ? "退出" : full ? "已满" : "加入"}</button>}
+      {activity.status === "open" && <button disabled={full && !activity.joinedByMe} onClick={(event) => { event.stopPropagation(); onAction(activity, activity.isOwner ? "cancel" : activity.joinedByMe ? "leave" : "join"); }}>{activity.isOwner ? "取消差事" : activity.joinedByMe ? "退出" : full ? "已满" : "加入"}</button>}
     </footer>
   </article>;
 }
