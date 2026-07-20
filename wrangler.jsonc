@@ -41,6 +41,22 @@
         "limit": 60,
         "period": 60
       }
+    },
+    {
+      "name": "USER_AUTH_RATE_LIMITER",
+      "namespace_id": "731106",
+      "simple": {
+        "limit": 10,
+        "period": 60
+      }
+    },
+    {
+      "name": "USER_ACTION_RATE_LIMITER",
+      "namespace_id": "731107",
+      "simple": {
+        "limit": 30,
+        "period": 60
+      }
     }
   ]
 }

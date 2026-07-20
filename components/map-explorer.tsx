@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import maplibregl, { type GeoJSONSource, type Map as MapLibreMap } from "maplibre-gl";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { categoryMeta, type CategoryFilter, type Place } from "@/lib/places";
@@ -255,6 +256,7 @@ export function MapExplorer({ initialPlaces }: MapExplorerProps) {
           </span>
           <span><strong>江城图志</strong><small>JIANGCHENG ATLAS</small></span>
         </button>
+        <Link href="/east-lake" className="mission-link">东湖差事 <span>NEW</span></Link>
         <div className="header-meta">
           <span className="live-dot" /><span>{places.length} 个地点</span><span className="header-divider" />
           <span>{dataSource === "d1" ? "D1 实时数据" : "首批图志"}</span>

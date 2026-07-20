@@ -82,7 +82,16 @@ export async function verifyAdminSession(token: string | undefined, secret: stri
 
 export function isSameOrigin(request: Request): boolean {
   const origin = request.headers.get("origin");
-  return origin !== null && origin === new URL(request.url).origin;
+  if (!origin) return false;
+  try {
+    const originUrl = new URL(origin);
+    const requestUrl = new URL(request.url);
+    const publicHost = request.headers.get("x-forwarded-host") ?? request.headers.get("host") ?? requestUrl.host;
+    const publicProtocol = request.headers.get("x-forwarded-proto") ?? requestUrl.protocol.replace(":", "");
+    return originUrl.host === publicHost && originUrl.protocol === `${publicProtocol}:`;
+  } catch {
+    return false;
+  }
 }
 
 export function getCookieValue(request: NextRequest, name: string): string | undefined {
