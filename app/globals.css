@@ -77,7 +77,7 @@ button:focus-visible, input:focus-visible { outline: 3px solid rgba(69, 196, 134
 .mission-link + .header-meta { margin-left:0; }
 .live-dot { width: 7px; height: 7px; border-radius: 50%; background: #45c486; box-shadow: 0 0 0 4px rgba(69, 196, 134, 0.15); }
 .header-divider { width: 1px; height: 16px; margin: 0 4px; background: var(--line); }
-.explorer-toggle {
+.explorer-restore {
   position: absolute;
   z-index: 19;
   top: 108px;
@@ -85,17 +85,18 @@ button:focus-visible, input:focus-visible { outline: 3px solid rgba(69, 196, 134
   height: 36px;
   padding: 0 12px;
   border: 1px solid rgba(255, 255, 255, .72);
-  border-radius: 0 10px 10px 0;
+  border-radius: 10px;
   background: var(--ink);
   color: #fff;
-  box-shadow: 8px 9px 24px rgba(21, 46, 41, .18);
+  box-shadow: 0 9px 24px rgba(21, 46, 41, .18);
   font-size: 10px;
   font-weight: 750;
   cursor: pointer;
-  transition: left 480ms cubic-bezier(.2, .85, .2, 1), background 180ms ease;
+  animation: restore-in 220ms ease both;
+  transition: background 180ms ease, transform 180ms ease;
 }
-.explorer-toggle.is-open { left: 422px; }
-.explorer-toggle:hover { background: #24564f; }
+.explorer-restore:hover { background: #24564f; transform: translateY(-1px); }
+@keyframes restore-in { from { opacity: 0; transform: translateX(-8px); } }
 
 .explorer-panel {
   position: absolute;
@@ -116,7 +117,9 @@ button:focus-visible, input:focus-visible { outline: 3px solid rgba(69, 196, 134
   transition: transform 480ms cubic-bezier(.2, .85, .2, 1);
 }
 .explorer-panel.is-open { transform: translateX(0); }
-.panel-intro { padding: 25px 25px 17px; }
+.panel-intro { position: relative; padding: 25px 25px 17px; }
+.panel-collapse { position: absolute; top: 18px; right: 18px; height: 30px; padding: 0 9px; border: 1px solid var(--line); border-radius: 9px; background: #eeeadf; color: #52615d; font-size: 9px; font-weight: 750; cursor: pointer; transition: background 160ms ease, color 160ms ease; }
+.panel-collapse:hover { background: var(--ink); color: #fff; }
 .eyebrow { margin: 0 0 10px; color: #a35f41; font: 700 10px/1 var(--font-latin); letter-spacing: 0.15em; }
 .panel-intro h1 { margin: 0; font-size: clamp(28px, 2.35vw, 38px); line-height: 1.18; letter-spacing: -0.055em; font-weight: 740; }
 .intro-copy { max-width: 320px; margin: 12px 0 0; color: var(--ink-muted); font-size: 12px; line-height: 1.75; }
@@ -252,11 +255,11 @@ button:focus-visible, input:focus-visible { outline: 3px solid rgba(69, 196, 134
   .brand small { font-size: 7px; }
   .header-meta { display: none; }
   .mission-link { margin-left:auto; padding:8px 9px; }
-  .explorer-toggle { top: auto; left: 10px; bottom: 10px; border-radius: 10px 10px 0 0; transition: bottom 480ms cubic-bezier(.2, .85, .2, 1), background 180ms ease; }
-  .explorer-toggle.is-open { left: 10px; bottom: calc(58vh + 10px); }
+  .explorer-restore { top: auto; left: 10px; bottom: 10px; }
   .explorer-panel { top: auto; left: 10px; right: 10px; bottom: 10px; width: auto; max-height: 58vh; border-radius: 20px; transform: translateY(calc(100% + 20px)); }
   .explorer-panel.is-open { transform: translateY(0); }
   .panel-intro { padding: 18px 19px 12px; }
+  .panel-collapse { top: 13px; right: 13px; }
   .panel-intro h1 { font-size: 26px; }
   .intro-copy { display: none; }
   .search-box { margin: 0 14px 10px; }

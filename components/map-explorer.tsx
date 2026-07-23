@@ -263,18 +263,17 @@ export function MapExplorer({ initialPlaces }: MapExplorerProps) {
         </div>
       </header>
 
-      <button
-        className={`explorer-toggle ${panelOpen ? "is-open" : ""}`}
-        type="button"
-        onClick={() => setPanelOpen((value) => !value)}
-        aria-expanded={panelOpen}
-        aria-controls="wuhan-explorer-panel"
-      >
-        {panelOpen ? "‹ 收起" : "› 展开图志"}
-      </button>
+      {!panelOpen && (
+        <button className="explorer-restore" type="button" onClick={() => setPanelOpen(true)} aria-controls="wuhan-explorer-panel">
+          › 展开图志
+        </button>
+      )}
 
       <aside id="wuhan-explorer-panel" className={`explorer-panel ${panelOpen ? "is-open" : ""}`} aria-hidden={!panelOpen}>
         <div className="panel-intro">
+          <button className="panel-collapse" type="button" onClick={() => setPanelOpen(false)} aria-label="收起图志浮层">
+            <span aria-hidden="true">‹</span> 收起
+          </button>
           <p className="eyebrow">WUHAN · 30.59°N</p>
           <h1>沿江穿城，<br />找回武汉的坐标。</h1>
           <p className="intro-copy">从两江四岸到街巷湖山，收录值得抵达、停留与讲述的江城现场。</p>
