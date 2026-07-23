@@ -261,12 +261,19 @@ export function MapExplorer({ initialPlaces }: MapExplorerProps) {
           <span className="live-dot" /><span>{places.length} 个地点</span><span className="header-divider" />
           <span>{dataSource === "d1" ? "D1 实时数据" : "首批图志"}</span>
         </div>
-        <button className="panel-toggle" type="button" onClick={() => setPanelOpen((value) => !value)} aria-expanded={panelOpen}>
-          {panelOpen ? "收起图志" : "打开图志"}
-        </button>
       </header>
 
-      <aside className={`explorer-panel ${panelOpen ? "is-open" : ""}`}>
+      <button
+        className={`explorer-toggle ${panelOpen ? "is-open" : ""}`}
+        type="button"
+        onClick={() => setPanelOpen((value) => !value)}
+        aria-expanded={panelOpen}
+        aria-controls="wuhan-explorer-panel"
+      >
+        {panelOpen ? "‹ 收起" : "› 展开图志"}
+      </button>
+
+      <aside id="wuhan-explorer-panel" className={`explorer-panel ${panelOpen ? "is-open" : ""}`} aria-hidden={!panelOpen}>
         <div className="panel-intro">
           <p className="eyebrow">WUHAN · 30.59°N</p>
           <h1>沿江穿城，<br />找回武汉的坐标。</h1>
