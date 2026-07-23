@@ -3,10 +3,18 @@
 import Link from "next/link";
 import maplibregl, { type GeoJSONSource, type Map as MapLibreMap } from "maplibre-gl";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { categoryMeta, type CategoryFilter, type Place } from "@/lib/places";
+import { categoryMeta, type Place } from "@/lib/places";
 
 const WUHAN_CENTER: [number, number] = [114.3055, 30.5928];
 const MAP_STYLE = "https://tiles.openfreemap.org/styles/liberty";
+const EAST_LAKE_MISSION = {
+  id: "east-lake-mission",
+  name: "东湖骑行差事",
+  subtitle: "找搭子、看路线攻略、约一次同行",
+  description: "这里先做活动组织与路线攻略，不记录骑行轨迹，也不提供实时导航。",
+  longitude: 114.386,
+  latitude: 30.5594,
+};
 
 function toFeatureCollection(places: Place[]) {
   return {
@@ -17,35 +25,33 @@ function toFeatureCollection(places: Place[]) {
         type: "Point" as const,
         coordinates: [place.longitude, place.latitude],
       },
-      properties: { id: place.id, name: place.name, categoryId: place.categoryId },
+      properties: {
+        id: place.id,
+        name: place.name,
+        categoryId: place.categoryId,
+        icon: categoryMeta[place.categoryId].icon,
+      },
     })),
   };
 }
 
 type ApiResponse = { places: Place[]; source: "d1" | "seed" };
 type MapExplorerProps = { initialPlaces: Place[] };
+type ScreenPosition = { x: number; y: number };
 
 export function MapExplorer({ initialPlaces }: MapExplorerProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<MapLibreMap | null>(null);
   const placesRef = useRef(initialPlaces);
   const [places, setPlaces] = useState(initialPlaces);
-  const [query, setQuery] = useState("");
-  const [category, setCategory] = useState<CategoryFilter>("all");
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [missionSelected, setMissionSelected] = useState(false);
+  const [detailPosition, setDetailPosition] = useState<ScreenPosition | null>(null);
+  const [showPlaces, setShowPlaces] = useState(true);
+  const [showMissions, setShowMissions] = useState(true);
   const [mapReady, setMapReady] = useState(false);
-  const [panelOpen, setPanelOpen] = useState(true);
   const [mapError, setMapError] = useState(false);
   const [dataSource, setDataSource] = useState<"d1" | "seed">("seed");
-
-  const filteredPlaces = useMemo(() => {
-    const normalizedQuery = query.trim().toLocaleLowerCase("zh-CN");
-    return places.filter((place) => {
-      const matchesCategory = category === "all" || place.categoryId === category;
-      const searchable = `${place.name} ${place.subtitle} ${place.district} ${place.address}`.toLocaleLowerCase("zh-CN");
-      return matchesCategory && (!normalizedQuery || searchable.includes(normalizedQuery));
-    });
-  }, [category, places, query]);
 
   const selectedPlace = useMemo(
     () => places.find((place) => place.id === selectedId) ?? null,
@@ -53,14 +59,14 @@ export function MapExplorer({ initialPlaces }: MapExplorerProps) {
   );
 
   const focusPlace = useCallback((place: Place) => {
+    setMissionSelected(false);
     setSelectedId(place.id);
-    if (window.matchMedia("(max-width: 760px)").matches) setPanelOpen(false);
     mapRef.current?.flyTo({
       center: [place.longitude, place.latitude],
       zoom: 14.6,
       duration: 1100,
       essential: true,
-      offset: [120, 0],
+      offset: [0, 150],
     });
 
     const url = new URL(window.location.href);
@@ -68,11 +74,29 @@ export function MapExplorer({ initialPlaces }: MapExplorerProps) {
     window.history.replaceState(null, "", url);
   }, []);
 
-  const clearSelection = useCallback(() => {
+  const focusMission = useCallback(() => {
     setSelectedId(null);
-    if (window.matchMedia("(max-width: 760px)").matches) setPanelOpen(true);
+    setMissionSelected(true);
+    mapRef.current?.flyTo({
+      center: [EAST_LAKE_MISSION.longitude, EAST_LAKE_MISSION.latitude],
+      zoom: 14.2,
+      duration: 1100,
+      essential: true,
+      offset: [0, 135],
+    });
     const url = new URL(window.location.href);
     url.searchParams.delete("place");
+    url.searchParams.set("mission", "east-lake");
+    window.history.replaceState(null, "", url);
+  }, []);
+
+  const clearSelection = useCallback(() => {
+    setSelectedId(null);
+    setMissionSelected(false);
+    setDetailPosition(null);
+    const url = new URL(window.location.href);
+    url.searchParams.delete("place");
+    url.searchParams.delete("mission");
     window.history.replaceState(null, "", url);
   }, []);
 
@@ -167,7 +191,7 @@ export function MapExplorer({ initialPlaces }: MapExplorerProps) {
         source: "places",
         filter: ["!", ["has", "point_count"]],
         paint: {
-          "circle-radius": ["interpolate", ["linear"], ["zoom"], 10, 7, 15, 11],
+          "circle-radius": ["interpolate", ["linear"], ["zoom"], 10, 9, 15, 14],
           "circle-color": [
             "match", ["get", "categoryId"],
             "landmark", categoryMeta.landmark.color,
@@ -181,6 +205,18 @@ export function MapExplorer({ initialPlaces }: MapExplorerProps) {
           "circle-stroke-width": 2.5,
           "circle-stroke-color": "#fffdf8",
         },
+      });
+      map.addLayer({
+        id: "place-icons",
+        type: "symbol",
+        source: "places",
+        filter: ["!", ["has", "point_count"]],
+        layout: {
+          "text-field": ["get", "icon"],
+          "text-size": ["interpolate", ["linear"], ["zoom"], 10, 8, 15, 11],
+          "text-allow-overlap": true,
+        },
+        paint: { "text-color": "#17302d" },
       });
       map.addLayer({
         id: "place-labels",
@@ -202,7 +238,59 @@ export function MapExplorer({ initialPlaces }: MapExplorerProps) {
         },
       });
 
+      map.addSource("missions", {
+        type: "geojson",
+        data: {
+          type: "FeatureCollection",
+          features: [{
+            type: "Feature",
+            geometry: {
+              type: "Point",
+              coordinates: [EAST_LAKE_MISSION.longitude, EAST_LAKE_MISSION.latitude],
+            },
+            properties: { id: EAST_LAKE_MISSION.id, name: EAST_LAKE_MISSION.name },
+          }],
+        },
+      });
+      map.addLayer({
+        id: "mission-halo",
+        type: "circle",
+        source: "missions",
+        paint: {
+          "circle-radius": ["interpolate", ["linear"], ["zoom"], 10, 16, 15, 22],
+          "circle-color": "rgba(216, 255, 62, .26)",
+          "circle-blur": 0.25,
+        },
+      });
+      map.addLayer({
+        id: "mission-points",
+        type: "circle",
+        source: "missions",
+        paint: {
+          "circle-radius": ["interpolate", ["linear"], ["zoom"], 10, 11, 15, 16],
+          "circle-color": "#173f3a",
+          "circle-stroke-width": 3,
+          "circle-stroke-color": "#d8ff3e",
+        },
+      });
+      map.addLayer({
+        id: "mission-icons",
+        type: "symbol",
+        source: "missions",
+        layout: {
+          "text-field": "!",
+          "text-size": ["interpolate", ["linear"], ["zoom"], 10, 13, 15, 18],
+          "text-allow-overlap": true,
+        },
+        paint: { "text-color": "#ffffff" },
+      });
+
       map.on("click", "place-points", (event) => {
+        const id = event.features?.[0]?.properties?.id as string | undefined;
+        const place = placesRef.current.find((item) => item.id === id);
+        if (place) focusPlace(place);
+      });
+      map.on("click", "place-icons", (event) => {
         const id = event.features?.[0]?.properties?.id as string | undefined;
         const place = placesRef.current.find((item) => item.id === id);
         if (place) focusPlace(place);
@@ -216,15 +304,20 @@ export function MapExplorer({ initialPlaces }: MapExplorerProps) {
           duration: 650,
         });
       });
-      for (const layer of ["place-points", "place-clusters"]) {
+      for (const layer of ["mission-points", "mission-icons"]) {
+        map.on("click", layer, focusMission);
+      }
+      for (const layer of ["place-points", "place-icons", "place-clusters", "mission-points", "mission-icons"]) {
         map.on("mouseenter", layer, () => { map.getCanvas().style.cursor = "pointer"; });
         map.on("mouseleave", layer, () => { map.getCanvas().style.cursor = ""; });
       }
 
       setMapReady(true);
-      const slug = new URL(window.location.href).searchParams.get("place");
+      const pageUrl = new URL(window.location.href);
+      const slug = pageUrl.searchParams.get("place");
       const sharedPlace = placesRef.current.find((place) => place.slug === slug);
       if (sharedPlace) focusPlace(sharedPlace);
+      if (pageUrl.searchParams.get("mission") === "east-lake") focusMission();
     });
 
     map.on("error", (event) => {
@@ -236,13 +329,46 @@ export function MapExplorer({ initialPlaces }: MapExplorerProps) {
       map.remove();
       mapRef.current = null;
     };
-  }, [focusPlace]);
+  }, [focusMission, focusPlace]);
 
   useEffect(() => {
     if (!mapReady) return;
     const source = mapRef.current?.getSource("places") as GeoJSONSource | undefined;
-    source?.setData(toFeatureCollection(filteredPlaces));
-  }, [filteredPlaces, mapReady]);
+    source?.setData(toFeatureCollection(showPlaces ? places : []));
+  }, [mapReady, places, showPlaces]);
+
+  useEffect(() => {
+    if (!mapReady) return;
+    const visibility = showMissions ? "visible" : "none";
+    for (const layer of ["mission-halo", "mission-points", "mission-icons"]) {
+      mapRef.current?.setLayoutProperty(layer, "visibility", visibility);
+    }
+  }, [mapReady, showMissions]);
+
+  useEffect(() => {
+    const map = mapRef.current;
+    const target = selectedPlace
+      ? [selectedPlace.longitude, selectedPlace.latitude] as [number, number]
+      : missionSelected
+        ? [EAST_LAKE_MISSION.longitude, EAST_LAKE_MISSION.latitude] as [number, number]
+        : null;
+    if (!map || !mapReady || !target) {
+      setDetailPosition(null);
+      return;
+    }
+
+    const updatePosition = () => {
+      const point = map.project(target);
+      setDetailPosition({ x: point.x, y: point.y });
+    };
+    updatePosition();
+    map.on("move", updatePosition);
+    map.on("resize", updatePosition);
+    return () => {
+      map.off("move", updatePosition);
+      map.off("resize", updatePosition);
+    };
+  }, [mapReady, missionSelected, selectedPlace]);
 
   return (
     <main className="atlas-shell">
@@ -263,62 +389,25 @@ export function MapExplorer({ initialPlaces }: MapExplorerProps) {
         </div>
       </header>
 
-      {!panelOpen && (
-        <button className="explorer-restore" type="button" onClick={() => setPanelOpen(true)} aria-controls="wuhan-explorer-panel">
-          › 展开图志
+      <aside className="map-legend" aria-label="地图图例">
+        <div className="legend-heading"><span>MAP LEGEND</span><strong>地图图例</strong></div>
+        <button type="button" className={showPlaces ? "active" : ""} onClick={() => setShowPlaces((visible) => !visible)}>
+          <i className="legend-place">景</i><span><b>景点</b><small>{places.length} 个城市坐标</small></span><em>{showPlaces ? "显示" : "隐藏"}</em>
         </button>
-      )}
-
-      <aside id="wuhan-explorer-panel" className={`explorer-panel ${panelOpen ? "is-open" : ""}`} aria-hidden={!panelOpen}>
-        <div className="panel-intro">
-          <button className="panel-collapse" type="button" onClick={() => setPanelOpen(false)} aria-label="收起图志浮层">
-            <span aria-hidden="true">‹</span> 收起
-          </button>
-          <p className="eyebrow">WUHAN · 30.59°N</p>
-          <h1>沿江穿城，<br />找回武汉的坐标。</h1>
-          <p className="intro-copy">从两江四岸到街巷湖山，收录值得抵达、停留与讲述的江城现场。</p>
-        </div>
-
-        <label className="search-box">
-          <span aria-hidden="true">⌕</span>
-          <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="搜索地点、街区或行政区" />
-          {query && <button type="button" onClick={() => setQuery("")} aria-label="清空搜索">×</button>}
-        </label>
-
-        <div className="category-row" role="list" aria-label="地点分类">
-          {(Object.keys(categoryMeta) as CategoryFilter[]).map((id) => (
-            <button
-              key={id}
-              type="button"
-              className={category === id ? "active" : ""}
-              onClick={() => setCategory(id)}
-              style={{ "--category-color": categoryMeta[id].color } as React.CSSProperties}
-            >
-              <span>{categoryMeta[id].icon}</span>{categoryMeta[id].shortLabel}
-            </button>
-          ))}
-        </div>
-
-        <div className="results-heading"><span>{categoryMeta[category].label}</span><b>{filteredPlaces.length.toString().padStart(2, "0")}</b></div>
-        <div className="place-list">
-          {filteredPlaces.map((place, index) => {
-            const meta = categoryMeta[place.categoryId];
-            return (
-              <button key={place.id} type="button" className={`place-row ${selectedId === place.id ? "selected" : ""}`} onClick={() => focusPlace(place)}>
-                <span className="place-index">{String(index + 1).padStart(2, "0")}</span>
-                <span className="place-symbol" style={{ background: meta.color }}>{meta.icon}</span>
-                <span className="place-copy"><strong>{place.name}</strong><small>{place.district} · {place.subtitle}</small></span>
-                <span className="place-arrow">↗</span>
-              </button>
-            );
-          })}
-          {filteredPlaces.length === 0 && <div className="empty-state"><span>⌁</span><strong>还没有找到这个坐标</strong><p>换一个关键词，或者浏览其他分类。</p></div>}
-        </div>
-        <footer className="panel-footer"><span>首期 · 武汉三镇</span><span>持续生长的城市图鉴</span></footer>
+        <button
+          type="button"
+          className={showMissions ? "active" : ""}
+          onClick={() => {
+            if (showMissions && missionSelected) clearSelection();
+            setShowMissions((visible) => !visible);
+          }}
+        >
+          <i className="legend-mission">!</i><span><b>差事</b><small>攻略与同城活动</small></span><em>{showMissions ? "显示" : "隐藏"}</em>
+        </button>
       </aside>
 
-      {selectedPlace && (
-        <section className="place-detail" aria-live="polite">
+      {selectedPlace && detailPosition && (
+        <section className="place-detail" aria-live="polite" style={{ left: detailPosition.x, top: detailPosition.y }}>
           <button className="detail-close" type="button" onClick={clearSelection} aria-label="关闭地点详情">×</button>
           <div
             className={`detail-visual ${selectedPlace.imageUrl ? "has-image" : ""}`}
@@ -339,7 +428,21 @@ export function MapExplorer({ initialPlaces }: MapExplorerProps) {
         </section>
       )}
 
-      {mapError && <div className="map-notice">底图暂时无法加载，请检查网络后刷新。地点资料仍可在左侧浏览。</div>}
+      {missionSelected && detailPosition && (
+        <section className="place-detail mission-detail" aria-live="polite" style={{ left: detailPosition.x, top: detailPosition.y }}>
+          <button className="detail-close" type="button" onClick={clearSelection} aria-label="关闭差事详情">×</button>
+          <div className="mission-visual"><span>MISSION · 001</span><b>!</b><small>东湖差事据点</small></div>
+          <div className="detail-body">
+            <div className="detail-tags"><span>差事</span><span>骑行搭子</span><span>路线攻略</span></div>
+            <h2>{EAST_LAKE_MISSION.name}</h2>
+            <h3>{EAST_LAKE_MISSION.subtitle}</h3>
+            <p>{EAST_LAKE_MISSION.description}</p>
+            <Link className="share-button mission-cta" href="/east-lake">查看东湖差事与攻略</Link>
+          </div>
+        </section>
+      )}
+
+      {mapError && <div className="map-notice">底图暂时无法加载，请检查网络后刷新。</div>}
       <div className="map-caption"><span>汉口</span><i /><span>武昌</span><i /><span>汉阳</span></div>
     </main>
   );
