@@ -1,5 +1,5 @@
 import { getCloudflareContext } from "@opennextjs/cloudflare";
-import { seedPlaces } from "@/lib/places";
+import { seedPlaces, withDefaultPlaceMedia } from "@/lib/places";
 import { listPublishedPlaces } from "@/lib/place-repository";
 
 export const dynamic = "force-dynamic";
@@ -7,7 +7,7 @@ export const dynamic = "force-dynamic";
 export async function GET() {
   try {
     const { env } = await getCloudflareContext({ async: true });
-    const places = await listPublishedPlaces(env.DB);
+    const places = (await listPublishedPlaces(env.DB)).map(withDefaultPlaceMedia);
 
     return Response.json(
       { places, source: "d1" },

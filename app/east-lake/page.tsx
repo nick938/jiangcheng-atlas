@@ -1,5 +1,5 @@
-import { EastLakeHub } from "@/components/east-lake-hub";
+import { redirect } from "next/navigation";
 
 export default function EastLakePage() {
-  return <EastLakeHub />;
+  redirect("/?event=east-lake-ride-sample");
 }

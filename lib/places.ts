@@ -24,6 +24,8 @@ export type Place = {
   categoryId: CategoryId;
   featured: boolean;
   imageUrl?: string;
+  imageCredit?: string;
+  imageSourceUrl?: string;
 };
 
 export type PlaceStatus = "draft" | "published" | "archived";
@@ -32,7 +34,7 @@ export type AdminPlace = Place & {
   status: PlaceStatus;
 };
 
-export const seedPlaces: Place[] = [
+const seedPlaceData: Place[] = [
   {
     id: "yellow-crane-tower",
     slug: "yellow-crane-tower",
@@ -229,3 +231,61 @@ export const seedPlaces: Place[] = [
     featured: true,
   },
 ];
+
+type DefaultPlaceMedia = Pick<Place, "imageUrl" | "imageCredit" | "imageSourceUrl">;
+
+const defaultPlaceMedia: Partial<Record<string, DefaultPlaceMedia>> = {
+  "yellow-crane-tower": {
+    imageUrl: "/places/yellow-crane-tower.jpg",
+    imageCredit: "xiquinhosilva · CC BY 2.0",
+    imageSourceUrl: "https://commons.wikimedia.org/wiki/File:Yellow_Crane_Tower_61472-Wuhan_(49150475341).jpg",
+  },
+  "east-lake": {
+    imageUrl: "/places/east-lake.jpg",
+    imageCredit: "Vmenkov · CC BY-SA 3.0",
+    imageSourceUrl: "https://commons.wikimedia.org/wiki/File:Wuhan_East_Lake_4172.jpg",
+  },
+  "hubei-museum": {
+    imageUrl: "/places/hubei-museum.jpg",
+    imageCredit: "Gary Todd · CC0",
+    imageSourceUrl: "https://commons.wikimedia.org/wiki/File:Hubei_Provincial_Museum,_Wuhan_(10154725164).jpg",
+  },
+  "wuhan-university": {
+    imageUrl: "/places/wuhan-university.jpg",
+    imageCredit: "Doraemon.tvb · CC BY-SA 3.0",
+    imageSourceUrl: "https://commons.wikimedia.org/wiki/File:Wuhan_University_01.jpg",
+  },
+  "qingchuan-pavilion": {
+    imageUrl: "/places/qingchuan-pavilion.jpg",
+    imageCredit: "Sherbet · CC BY 2.5",
+    imageSourceUrl: "https://commons.wikimedia.org/wiki/File:Qingchuan_Pavilion,_Hubei,_China.jpg",
+  },
+  "gude-temple": {
+    imageUrl: "/places/gude-temple.jpg",
+    imageCredit: "ScareCriterion12 · CC BY-SA 4.0",
+    imageSourceUrl: "https://commons.wikimedia.org/wiki/File:Gude_Temple,_Wuhan,_Oct_2017.jpg",
+  },
+  tanhualin: {
+    imageUrl: "/places/tanhualin.jpg",
+    imageCredit: "Howchou · CC BY 3.0",
+    imageSourceUrl: "https://commons.wikimedia.org/wiki/File:Tanhualin.JPG",
+  },
+  "optics-valley": {
+    imageUrl: "/places/optics-valley.jpg",
+    imageCredit: "Zhangmoon618 · CC BY-SA 3.0",
+    imageSourceUrl: "https://commons.wikimedia.org/wiki/File:Optics_Valley_Square.jpg",
+  },
+  "guiyuan-temple": {
+    imageUrl: "/places/guiyuan-temple.jpg",
+    imageCredit: "Gary Todd · CC0",
+    imageSourceUrl: "https://commons.wikimedia.org/wiki/File:Guiyuan_Temple,_Wuhan_(10160025996).jpg",
+  },
+};
+
+export function withDefaultPlaceMedia(place: Place): Place {
+  if (place.imageUrl) return place;
+  const media = defaultPlaceMedia[place.id];
+  return media ? { ...place, ...media } : place;
+}
+
+export const seedPlaces: Place[] = seedPlaceData.map(withDefaultPlaceMedia);

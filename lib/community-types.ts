@@ -23,11 +23,14 @@ export type CyclingRoute = {
   tips: string[];
 };
 
-export type RideActivity = {
+export type ActivityType = "ride" | "walk" | "sports" | "food" | "photo" | "other";
+
+export type CityActivity = {
   id: string;
-  routeId: string;
-  routeName: string;
-  routeColor: string;
+  activityType: ActivityType;
+  routeId: string | null;
+  routeName: string | null;
+  routeColor: string | null;
   title: string;
   details: string;
   startsAt: string;
@@ -35,7 +38,7 @@ export type RideActivity = {
   meetingLongitude: number;
   meetingLatitude: number;
   capacity: number;
-  pace: "relaxed" | "steady" | "sport";
+  pace: "relaxed" | "steady" | "sport" | null;
   status: "open" | "cancelled" | "completed";
   creator: CommunityUser;
   joinedCount: number;
@@ -45,6 +48,6 @@ export type RideActivity = {
 
 export type CommunitySnapshot = {
   routes: CyclingRoute[];
-  activities: RideActivity[];
+  activities: CityActivity[];
   user: CommunityUser | null;
 };
