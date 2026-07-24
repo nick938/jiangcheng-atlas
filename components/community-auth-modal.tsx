@@ -43,11 +43,11 @@ export function CommunityAuthModal({ onClose, onAuthenticated }: CommunityAuthMo
     <div className="community-auth-shade" role="presentation" onMouseDown={(event) => {
       if (event.target === event.currentTarget) onClose();
     }}>
-      <section className="community-auth-card" role="dialog" aria-modal="true" aria-label="发布身份">
+      <section className="community-auth-card" role="dialog" aria-modal="true" aria-label="活动身份">
         <button type="button" className="community-auth-close" onClick={onClose} aria-label="关闭">×</button>
-        <span className="community-auth-kicker">PUBLISH IDENTITY</span>
-        <h2>发布前，留一个江湖名号。</h2>
-        <p>身份只在发布或报名时需要，不影响浏览地图和填写活动。</p>
+        <span className="community-auth-kicker">PLAYER IDENTITY</span>
+        <h2>参与前，留一个江湖名号。</h2>
+        <p>身份只在发布、报名或查看个人记录时需要，不影响浏览地图。</p>
         <div className="community-auth-tabs">
           <button type="button" className={mode === "register" ? "active" : ""} onClick={() => { setMode("register"); setError(""); }}>第一次来</button>
           <button type="button" className={mode === "login" ? "active" : ""} onClick={() => { setMode("login"); setError(""); }}>已有账号</button>
@@ -60,7 +60,7 @@ export function CommunityAuthModal({ onClose, onAuthenticated }: CommunityAuthMo
           <label>密码<input name="password" required type="password" minLength={10} maxLength={72} placeholder="至少 10 位" /></label>
           {error && <p className="community-auth-error">{error}</p>}
           <button type="submit" className="community-auth-submit" disabled={busy}>
-            {busy ? "正在确认…" : mode === "register" ? "创建身份并继续发布" : "登录并继续"}
+            {busy ? "正在确认…" : mode === "register" ? "创建身份并继续" : "登录并继续"}
           </button>
         </form>
       </section>

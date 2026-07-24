@@ -75,6 +75,8 @@ button:focus-visible, input:focus-visible { outline: 3px solid rgba(69, 196, 134
 .header-actions { height: 62px; display: flex; align-items: center; padding: 8px 10px; border: 1px solid rgba(255, 255, 255, .7); border-radius: 17px; background: rgba(255, 253, 248, .91); box-shadow: 0 8px 34px rgba(26, 53, 48, .11); backdrop-filter: blur(18px) saturate(1.2); pointer-events: auto; }
 .mission-link { display:flex; align-items:center; gap:7px; padding:9px 12px; border:0; border-radius:10px; background:#173f3a; color:#fff; font-size:10px; font-weight:800; text-decoration:none; cursor:pointer; }
 .mission-link span { padding:3px 5px; border-radius:4px; background:#d8ff3e; color:#173f3a; font:800 7px/1 var(--font-latin); }
+.my-events-link { background: transparent; color: #415651; }
+.my-events-link:hover { background: #eeeae1; color: var(--ink); }
 .create-event-link:hover { background: #20564f; }
 
 .legend-explorer {
@@ -248,8 +250,12 @@ button:focus-visible, input:focus-visible { outline: 3px solid rgba(69, 196, 134
 .event-owner { display: flex; align-items: center; gap: 8px; margin-top: 8px; color: #435955; font-size: 9px; font-weight: 700; }
 .event-owner i { display: grid; width: 26px; height: 26px; place-items: center; border-radius: 50%; color: #fff; font-size: 10px; font-style: normal; }
 .event-action:disabled { opacity: .5; cursor: not-allowed; }
+.event-owner-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 7px; margin-top: 10px; }
+.event-owner-actions button, .my-activity-actions button { height: 38px; border: 0; border-radius: 10px; background: var(--ink); color: #fff; font-size: 9px; font-weight: 750; cursor: pointer; }
+.event-owner-actions button.danger, .my-activity-actions button.danger { background: #f0e7e1; color: #994e3f; }
+.event-owner-actions button:disabled, .my-activity-actions button:disabled { opacity: .5; cursor: wait; }
 
-.create-event-panel {
+.create-event-panel, .my-activities-panel {
   position: absolute;
   z-index: 24;
   top: 96px;
@@ -266,11 +272,11 @@ button:focus-visible, input:focus-visible { outline: 3px solid rgba(69, 196, 134
   scrollbar-width: thin;
 }
 @keyframes create-panel-in { from { opacity: 0; transform: translateX(12px) scale(.98); } }
-.create-event-panel > header { display: flex; align-items: flex-start; gap: 12px; padding: 17px 17px 13px; border-bottom: 1px solid var(--line); }
-.create-event-panel > header div { flex: 1; }
+.create-event-panel > header, .my-activities-panel > header { display: flex; align-items: flex-start; gap: 12px; padding: 17px 17px 13px; border-bottom: 1px solid var(--line); }
+.create-event-panel > header > div { flex: 1; }
 .create-event-panel > header span { display: block; margin-bottom: 5px; color: #a35f41; font: 700 7px/1 var(--font-latin); letter-spacing: .15em; }
 .create-event-panel > header h2 { margin: 0; font-size: 20px; letter-spacing: -.04em; }
-.create-event-panel > header button { width: 29px; height: 29px; padding: 0; border: 1px solid var(--line); border-radius: 50%; background: #f1ede4; color: #62706c; font-size: 17px; cursor: pointer; }
+.create-event-panel > header > button, .my-activities-panel > header > button { width: 29px; height: 29px; padding: 0; border: 1px solid var(--line); border-radius: 50%; background: #f1ede4; color: #62706c; font-size: 17px; cursor: pointer; }
 .create-location { display: flex; align-items: center; gap: 10px; margin: 13px 15px 4px; padding: 11px; border: 1px dashed rgba(136,184,0,.55); border-radius: 12px; background: rgba(216,255,62,.1); color: #546d18; }
 .create-location.picked { border-style: solid; background: rgba(136,184,0,.13); }
 .create-location i { display: grid; width: 32px; height: 32px; place-items: center; color: #729b00; font-style: normal; }
@@ -299,6 +305,36 @@ button:focus-visible, input:focus-visible { outline: 3px solid rgba(69, 196, 134
 .create-submit:disabled { opacity: .55; cursor: wait; }
 .create-identity-note { color: #8b9692; font-size: 7px; line-height: 1.55; text-align: center; }
 .map-picking-location { cursor: crosshair !important; }
+
+.my-activities-panel { display: flex; flex-direction: column; overflow: hidden; }
+.my-activities-identity { flex: 1; display: flex; align-items: center; gap: 10px; }
+.my-activities-identity > i { display: grid; width: 36px; height: 36px; place-items: center; border-radius: 50%; color: #fff; font-size: 13px; font-style: normal; font-weight: 800; }
+.my-activities-identity span { min-width: 0; }
+.my-activities-identity small { display: block; margin-bottom: 5px; color: #a35f41; font: 700 7px/1 var(--font-latin); letter-spacing: .14em; }
+.my-activities-identity h2 { margin: 0; overflow: hidden; font-size: 18px; letter-spacing: -.04em; text-overflow: ellipsis; white-space: nowrap; }
+.my-activities-panel > nav { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; padding: 7px; border-bottom: 1px solid var(--line); background: #f3efe7; }
+.my-activities-panel > nav button { height: 34px; border: 0; border-radius: 9px; background: transparent; color: #78847f; font-size: 9px; font-weight: 750; cursor: pointer; }
+.my-activities-panel > nav button.active { background: #fffdf8; color: var(--ink); box-shadow: 0 3px 12px rgba(24,51,47,.08); }
+.my-activities-panel > nav em { display: inline-grid; min-width: 17px; height: 17px; margin-left: 4px; place-items: center; border-radius: 99px; background: rgba(24,51,47,.08); font: 700 7px/1 var(--font-latin); font-style: normal; }
+.my-activities-list { min-height: 150px; overflow-y: auto; padding: 8px; }
+.my-activities-list article { overflow: hidden; margin-bottom: 7px; border: 1px solid var(--line); border-radius: 13px; background: #fffdf8; }
+.my-activity-main { width: 100%; display: block; padding: 11px; border: 0; background: transparent; color: var(--ink); text-align: left; cursor: pointer; }
+.my-activity-main:hover { background: #f5f1e9; }
+.my-activity-meta { display: flex; align-items: center; gap: 5px; margin-bottom: 7px; }
+.my-activity-meta i, .my-activity-meta em, .my-activity-meta small { padding: 4px 6px; border-radius: 99px; font-size: 7px; font-style: normal; font-weight: 750; }
+.my-activity-meta i { background: #e8f4ef; color: #27715e; }
+.my-activity-meta em { background: #edf3d9; color: #668800; }
+.my-activity-meta em.status-cancelled { background: #f4e7e2; color: #a55041; }
+.my-activity-meta em.status-completed { background: #e3f2ea; color: #22745d; }
+.my-activity-meta small { margin-left: auto; padding-right: 0; color: #909a96; }
+.my-activity-main > strong { display: block; margin-bottom: 7px; overflow: hidden; font-size: 12px; text-overflow: ellipsis; white-space: nowrap; }
+.my-activity-facts { display: grid; grid-template-columns: 1.05fr 1.25fr auto; gap: 7px; color: #7b8783; }
+.my-activity-facts small { overflow: hidden; font-size: 7px; text-overflow: ellipsis; white-space: nowrap; }
+.my-activity-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; padding: 0 9px 9px; }
+.my-activity-actions button { height: 32px; font-size: 8px; }
+.my-activities-empty { display: grid; min-height: 150px; padding: 28px 20px; place-content: center; text-align: center; }
+.my-activities-empty b { font-size: 11px; }
+.my-activities-empty span { max-width: 220px; margin-top: 6px; color: #87928e; font-size: 8px; line-height: 1.6; }
 
 .community-auth-shade { position: fixed; z-index: 60; inset: 0; display: grid; place-items: center; padding: 18px; background: rgba(10,24,21,.42); backdrop-filter: blur(8px); }
 .community-auth-card { position: relative; width: min(390px, 100%); padding: 25px; border: 1px solid rgba(255,255,255,.72); border-radius: 22px; background: #fffdf8; box-shadow: 0 28px 90px rgba(10,26,22,.3); animation: auth-card-in 220ms cubic-bezier(.2,.85,.2,1) both; }
@@ -334,6 +370,7 @@ button:focus-visible, input:focus-visible { outline: 3px solid rgba(69, 196, 134
   .brand strong { font-size: 15px; }
   .brand small { font-size: 7px; }
   .mission-link { padding:8px 9px; }
+  .my-events-link { padding: 8px 6px; }
   .legend-explorer { top: 76px; left: 10px; gap: 7px; }
   .legend-rail { width: 54px; padding: 6px 4px; border-radius: 15px; }
   .legend-rail-title { padding-bottom: 4px; }
@@ -346,8 +383,8 @@ button:focus-visible, input:focus-visible { outline: 3px solid rgba(69, 196, 134
   .legend-result-list > button { grid-template-columns: 34px minmax(0, 1fr) 14px; padding: 7px; }
   .legend-result-list > button i { width: 32px; height: 32px; }
   .place-detail { z-index: 25; width: min(300px, calc(100vw - 20px)); }
-  .create-event-panel { z-index: 28; top: auto; right: 8px; bottom: 8px; width: calc(100vw - 16px); max-height: min(72vh, 650px); border-radius: 18px; }
-  .create-event-panel > header { padding: 14px 15px 11px; }
+  .create-event-panel, .my-activities-panel { z-index: 28; top: auto; right: 8px; bottom: 8px; width: calc(100vw - 16px); max-height: min(72vh, 650px); border-radius: 18px; }
+  .create-event-panel > header, .my-activities-panel > header { padding: 14px 15px 11px; }
   .create-event-panel > header h2 { font-size: 18px; }
   .create-location { margin: 10px 13px 2px; }
   .create-event-panel form { padding: 10px 13px 14px; }

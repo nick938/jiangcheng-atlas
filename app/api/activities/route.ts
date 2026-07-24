@@ -1,6 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { isSameOrigin } from "@/lib/admin-auth";
-import { listActivities } from "@/lib/community-repository";
+import { listActivities, listMyActivities } from "@/lib/community-repository";
 import type { ActivityType } from "@/lib/community-types";
 import { readJsonBody } from "@/lib/http";
 import { currentUser } from "@/lib/user-auth";
@@ -10,8 +10,11 @@ const activityTypes = new Set<ActivityType>(["ride", "walk", "sports", "food", "
 
 export async function GET(request: NextRequest) {
   const { env, user } = await currentUser(request);
-  const activities = await listActivities(env.DB, user);
-  return NextResponse.json({ activities, user }, { headers: { "Cache-Control": "no-store" } });
+  const [activities, myActivities] = await Promise.all([
+    listActivities(env.DB, user),
+    user ? listMyActivities(env.DB, user) : Promise.resolve([]),
+  ]);
+  return NextResponse.json({ activities, myActivities, user }, { headers: { "Cache-Control": "no-store" } });
 }
 
 export async function POST(request: NextRequest) {

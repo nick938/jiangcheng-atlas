@@ -40,6 +40,8 @@ export type CityActivity = {
   capacity: number;
   pace: "relaxed" | "steady" | "sport" | null;
   status: "open" | "cancelled" | "completed";
+  completedAt: string | null;
+  cancelledAt: string | null;
   creator: CommunityUser;
   joinedCount: number;
   joinedByMe: boolean;

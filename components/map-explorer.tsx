@@ -3,6 +3,7 @@
 import maplibregl, { type GeoJSONSource, type Map as MapLibreMap } from "maplibre-gl";
 import { type FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { CommunityAuthModal } from "@/components/community-auth-modal";
+import { MyActivitiesPanel } from "@/components/my-activities-panel";
 import type { ActivityType, CityActivity, CommunityUser } from "@/lib/community-types";
 import { categoryMeta, type CategoryFilter, type Place } from "@/lib/places";
 
@@ -41,6 +42,8 @@ const SAMPLE_ACTIVITY: CityActivity = {
   capacity: 8,
   pace: null,
   status: "open",
+  completedAt: null,
+  cancelledAt: null,
   creator: {
     id: "sample-organizer",
     username: "jiangcheng",
@@ -53,7 +56,12 @@ const SAMPLE_ACTIVITY: CityActivity = {
 };
 
 type PlacesResponse = { places: Place[]; source: "d1" | "seed" };
-type ActivitiesResponse = { activities: CityActivity[]; user: CommunityUser | null; error?: string };
+type ActivitiesResponse = {
+  activities: CityActivity[];
+  myActivities: CityActivity[];
+  user: CommunityUser | null;
+  error?: string;
+};
 type MapExplorerProps = { initialPlaces: Place[] };
 type ScreenPosition = { x: number; y: number };
 type ExplorerCategory = CategoryFilter | "event";
@@ -69,7 +77,8 @@ type ActivityDraft = {
 };
 type PendingAction =
   | { kind: "publish"; draft: ActivityDraft }
-  | { kind: "join"; activityId: string };
+  | { kind: "join"; activityId: string }
+  | { kind: "mine" };
 
 const explorerCategories: { id: ExplorerCategory; label: string; color: string }[] = [
   { id: "all", label: "全部", color: "#49635e" },
@@ -151,6 +160,14 @@ function dateLabel(value: string) {
   }).format(new Date(value));
 }
 
+function activityStatusLabel(activity: CityActivity, currentTime: number) {
+  if (activity.status === "cancelled") return "已取消";
+  if (activity.status === "completed") return "已完成";
+  if (new Date(activity.startsAt).getTime() <= currentTime) return "已结束";
+  if (activity.joinedCount >= activity.capacity) return "已满员";
+  return "正在召集";
+}
+
 async function jsonRequest<T>(path: string, options?: RequestInit): Promise<T> {
   const response = await fetch(path, options);
   const result = await response.json() as T & { error?: string };
@@ -181,8 +198,10 @@ export function MapExplorer({ initialPlaces }: MapExplorerProps) {
   const placesRef = useRef(initialPlaces);
   const activitiesRef = useRef<CityActivity[]>([SAMPLE_ACTIVITY]);
   const createOpenRef = useRef(false);
+  const [currentTime] = useState(() => Date.now());
   const [places, setPlaces] = useState(initialPlaces);
   const [activities, setActivities] = useState<CityActivity[]>([SAMPLE_ACTIVITY]);
+  const [myActivities, setMyActivities] = useState<CityActivity[]>([]);
   const [user, setUser] = useState<CommunityUser | null>(null);
   const [selectedPlaceId, setSelectedPlaceId] = useState<string | null>(null);
   const [selectedActivityId, setSelectedActivityId] = useState<string | null>(null);
@@ -192,6 +211,7 @@ export function MapExplorer({ initialPlaces }: MapExplorerProps) {
   const [mapReady, setMapReady] = useState(false);
   const [mapError, setMapError] = useState(false);
   const [createOpen, setCreateOpen] = useState(false);
+  const [myActivitiesOpen, setMyActivitiesOpen] = useState(false);
   const [draftLocation, setDraftLocation] = useState<[number, number] | null>(null);
   const [authOpen, setAuthOpen] = useState(false);
   const [pendingAction, setPendingAction] = useState<PendingAction | null>(null);
@@ -203,8 +223,10 @@ export function MapExplorer({ initialPlaces }: MapExplorerProps) {
     [places, selectedPlaceId],
   );
   const selectedActivity = useMemo(
-    () => activities.find((activity) => activity.id === selectedActivityId) ?? null,
-    [activities, selectedActivityId],
+    () => activities.find((activity) => activity.id === selectedActivityId)
+      ?? myActivities.find((activity) => activity.id === selectedActivityId)
+      ?? null,
+    [activities, myActivities, selectedActivityId],
   );
   const categoryPlaces = useMemo(
     () => activeCategory === "all"
@@ -270,6 +292,7 @@ export function MapExplorer({ initialPlaces }: MapExplorerProps) {
         ...payload.activities.filter((activity) => activity.id !== SAMPLE_ACTIVITY.id),
       ];
       setActivities(merged);
+      setMyActivities(payload.myActivities);
       setUser(payload.user);
       return merged;
     } catch (error) {
@@ -281,6 +304,7 @@ export function MapExplorer({ initialPlaces }: MapExplorerProps) {
   const resetCoreView = useCallback(() => {
     clearSelection();
     setCreateOpen(false);
+    setMyActivitiesOpen(false);
     mapRef.current?.fitBounds(WUHAN_CORE_BOUNDS, {
       padding: getCoreMapPadding(),
       maxZoom: 12.15,
@@ -292,6 +316,7 @@ export function MapExplorer({ initialPlaces }: MapExplorerProps) {
   const openCreatePanel = useCallback((location?: [number, number]) => {
     clearSelection();
     setCategoryListOpen(false);
+    setMyActivitiesOpen(false);
     setActiveCategory("event");
     setDraftLocation(location ?? null);
     setCreateOpen(true);
@@ -332,19 +357,49 @@ export function MapExplorer({ initialPlaces }: MapExplorerProps) {
     setBusy(true);
     setNotice("");
     try {
-      const path = activity.isOwner ? `/api/activities/${activity.id}` : `/api/activities/${activity.id}/join`;
-      const method = activity.isOwner || activity.joinedByMe ? "DELETE" : "POST";
-      await jsonRequest(path, { method });
+      const method = activity.joinedByMe ? "DELETE" : "POST";
+      await jsonRequest(`/api/activities/${activity.id}/join`, { method });
       const nextActivities = await refreshActivities();
       const next = nextActivities.find((item) => item.id === activity.id);
       if (next) focusActivity(next);
-      setNotice(activity.isOwner ? "差事已取消。" : activity.joinedByMe ? "已退出这次差事。" : "已加入这次差事。");
+      setNotice(activity.joinedByMe ? "已退出这次差事。" : "已加入这次差事。");
     } catch (error) {
       setNotice(error instanceof Error ? error.message : "操作失败");
     } finally {
       setBusy(false);
     }
   }, [focusActivity, openCreatePanel, refreshActivities, user]);
+
+  const updateActivityStatus = useCallback(async (activity: CityActivity, action: "complete" | "cancel") => {
+    const prompt = action === "complete"
+      ? `确认将「${activity.title}」标记为已完成？`
+      : `确认取消「${activity.title}」？参加者仍能在历史记录中看到它。`;
+    if (!window.confirm(prompt)) return;
+    setBusy(true);
+    setNotice("");
+    try {
+      await jsonRequest(`/api/activities/${activity.id}`, { method: action === "complete" ? "PATCH" : "DELETE" });
+      await refreshActivities();
+      clearSelection();
+      setNotice(action === "complete" ? "差事已完成，已收进历史记录。" : "差事已取消，已收进历史记录。");
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : "状态更新失败");
+    } finally {
+      setBusy(false);
+    }
+  }, [clearSelection, refreshActivities]);
+
+  const openMyActivities = () => {
+    clearSelection();
+    setCreateOpen(false);
+    setCategoryListOpen(false);
+    if (!user) {
+      setPendingAction({ kind: "mine" });
+      setAuthOpen(true);
+      return;
+    }
+    setMyActivitiesOpen(true);
+  };
 
   const submitCreate = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -382,6 +437,11 @@ export function MapExplorer({ initialPlaces }: MapExplorerProps) {
     const action = pendingAction;
     setPendingAction(null);
     if (!action) return;
+    if (action.kind === "mine") {
+      await refreshActivities();
+      setMyActivitiesOpen(true);
+      return;
+    }
     if (action.kind === "publish") {
       await publishDraft(action.draft);
       return;
@@ -569,9 +629,12 @@ export function MapExplorer({ initialPlaces }: MapExplorerProps) {
   useEffect(() => {
     if (!mapReady) return;
     const source = mapRef.current?.getSource("activities") as GeoJSONSource | undefined;
-    source?.setData(toActivityFeatureCollection(activities));
+    const visibleActivities = selectedActivity && !activities.some((activity) => activity.id === selectedActivity.id)
+      ? [...activities, selectedActivity]
+      : activities;
+    source?.setData(toActivityFeatureCollection(visibleActivities));
     mapRef.current?.setLayoutProperty("event-icons", "visibility", categoryHasActivities ? "visible" : "none");
-  }, [activities, categoryHasActivities, mapReady]);
+  }, [activities, categoryHasActivities, mapReady, selectedActivity]);
 
   useEffect(() => {
     const map = mapRef.current;
@@ -635,6 +698,9 @@ export function MapExplorer({ initialPlaces }: MapExplorerProps) {
           <span><strong>江城图志</strong><small>JIANGCHENG ATLAS</small></span>
         </button>
         <div className="header-actions">
+          <button type="button" className="mission-link my-events-link" onClick={openMyActivities}>
+            我的差事 {user && <span>{user.displayName.slice(0, 1)}</span>}
+          </button>
           <button type="button" className="mission-link create-event-link" onClick={() => openCreatePanel()}>
             创建差事 <span>＋</span>
           </button>
@@ -742,6 +808,22 @@ export function MapExplorer({ initialPlaces }: MapExplorerProps) {
         </section>
       )}
 
+      {myActivitiesOpen && user && (
+        <MyActivitiesPanel
+          user={user}
+          activities={myActivities}
+          busy={busy}
+          onClose={() => setMyActivitiesOpen(false)}
+          onSelect={(activity) => {
+            setMyActivitiesOpen(false);
+            setActiveCategory("event");
+            focusActivity(activity);
+          }}
+          onComplete={(activity) => void updateActivityStatus(activity, "complete")}
+          onCancel={(activity) => void updateActivityStatus(activity, "cancel")}
+        />
+      )}
+
       {selectedPlace && detailPosition && (
         <section className="place-detail" aria-live="polite" style={{ left: detailPosition.x, top: detailPosition.y }}>
           <button className="detail-close" type="button" onClick={clearSelection} aria-label="关闭地点详情">×</button>
@@ -775,7 +857,7 @@ export function MapExplorer({ initialPlaces }: MapExplorerProps) {
           <div className="mission-visual">
             <span>EVENT · {activityTypeMeta[selectedActivity.activityType].label}</span>
             <b>{activityTypeMeta[selectedActivity.activityType].short}</b>
-            <small>{selectedActivity.status === "open" ? "正在召集" : "已结束"}</small>
+            <small>{activityStatusLabel(selectedActivity, currentTime)}</small>
           </div>
           <div className="detail-body">
             <div className="detail-tags"><span>差事</span><span>{activityTypeMeta[selectedActivity.activityType].label}</span><span>{dateLabel(selectedActivity.startsAt)}</span></div>
@@ -790,7 +872,13 @@ export function MapExplorer({ initialPlaces }: MapExplorerProps) {
               <i style={{ background: selectedActivity.creator.avatarColor }}>{selectedActivity.creator.displayName.slice(0, 1)}</i>
               <span><small>发起人</small>{selectedActivity.creator.displayName}</span>
             </div>
-            {selectedActivity.status === "open" && (
+            {selectedActivity.status === "open" && new Date(selectedActivity.startsAt).getTime() > currentTime && (
+              selectedActivity.isOwner ? (
+                <div className="event-owner-actions">
+                  <button type="button" disabled={busy} onClick={() => void updateActivityStatus(selectedActivity, "complete")}>标记完成</button>
+                  <button type="button" className="danger" disabled={busy} onClick={() => void updateActivityStatus(selectedActivity, "cancel")}>取消差事</button>
+                </div>
+              ) : (
               <button
                 type="button"
                 className="share-button event-action"
@@ -810,8 +898,9 @@ export function MapExplorer({ initialPlaces }: MapExplorerProps) {
                       ? "退出这次差事"
                       : selectedActivity.joinedCount >= selectedActivity.capacity
                         ? "队伍已满"
-                        : "报名参加"}
+                      : "报名参加"}
               </button>
+              )
             )}
           </div>
         </section>

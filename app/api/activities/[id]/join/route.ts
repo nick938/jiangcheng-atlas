@@ -12,7 +12,8 @@ export async function POST(request: NextRequest, context: RouteContext<"/api/act
   if (!(await env.USER_ACTION_RATE_LIMITER.limit({ key: user.id })).success) return NextResponse.json({ error: "操作太频繁" }, { status: 429 });
   const result = await env.DB.prepare(
     `INSERT OR IGNORE INTO activity_members (activity_id, user_id)
-     SELECT a.id, ? FROM activities a WHERE a.id = ? AND a.status = 'open' AND a.starts_at > datetime('now')
+     SELECT a.id, ? FROM activities a WHERE a.id = ? AND a.status = 'open'
+     AND datetime(a.starts_at) > datetime('now')
      AND (SELECT COUNT(*) FROM activity_members m WHERE m.activity_id = a.id) < a.capacity`,
   ).bind(user.id, id).run();
   if (!result.meta.changes) return NextResponse.json({ error: "活动已满、已结束，或你已经加入" }, { status: 409 });
@@ -26,6 +27,15 @@ export async function DELETE(request: NextRequest, context: RouteContext<"/api/a
   if (!user) return NextResponse.json({ error: "请先登录" }, { status: 401 });
   const activity = await env.DB.prepare("SELECT creator_id FROM activities WHERE id = ?").bind(id).first<{ creator_id: string }>();
   if (activity?.creator_id === user.id) return NextResponse.json({ error: "发起人不能退出，可取消活动" }, { status: 409 });
-  await env.DB.prepare("DELETE FROM activity_members WHERE activity_id = ? AND user_id = ?").bind(id, user.id).run();
+  const result = await env.DB.prepare(
+    `DELETE FROM activity_members WHERE activity_id = ? AND user_id = ?
+     AND EXISTS (
+       SELECT 1 FROM activities a WHERE a.id = activity_members.activity_id
+       AND a.status = 'open' AND datetime(a.starts_at) > datetime('now')
+     )`,
+  ).bind(id, user.id).run();
+  if (!result.meta.changes) {
+    return NextResponse.json({ error: "只能退出尚未开始的差事" }, { status: 409 });
+  }
   return NextResponse.json({ joined: false });
 }
