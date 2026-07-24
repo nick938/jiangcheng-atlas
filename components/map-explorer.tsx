@@ -47,6 +47,7 @@ const SAMPLE_ACTIVITY: CityActivity = {
   status: "open",
   completedAt: null,
   cancelledAt: null,
+  imageUrl: null,
   creator: {
     id: "sample-organizer",
     username: "jiangcheng",
@@ -78,6 +79,7 @@ type ActivityDraft = {
   meetingLongitude: number;
   meetingLatitude: number;
   capacity: number;
+  image: File | null;
 };
 type PendingAction =
   | { kind: "publish"; draft: ActivityDraft }
@@ -107,7 +109,12 @@ const categoryIconBody: Record<ExplorerCategory, string> = {
 };
 
 function CategoryPictogram({ id }: { id: ExplorerCategory }) {
-  return <svg viewBox="0 0 24 24" aria-hidden="true" dangerouslySetInnerHTML={{ __html: categoryIconBody[id] }} />;
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true">
+      <g className="pictogram-outline" dangerouslySetInnerHTML={{ __html: categoryIconBody[id] }} />
+      <g className="pictogram-color" dangerouslySetInnerHTML={{ __html: categoryIconBody[id] }} />
+    </svg>
+  );
 }
 
 function markerSvg(id: ExplorerCategory, color: string) {
@@ -140,6 +147,41 @@ function toActivityFeatureCollection(activities: CityActivity[]) {
       properties: { id: activity.id, name: activity.title },
     })),
   };
+}
+
+function toDraftLocationFeatureCollection(location: [number, number] | null) {
+  return {
+    type: "FeatureCollection" as const,
+    features: location ? [{
+      type: "Feature" as const,
+      geometry: { type: "Point" as const, coordinates: location },
+      properties: { kind: "draft-location" },
+    }] : [],
+  };
+}
+
+function baiduNavigationUrl(activity: CityActivity) {
+  const query = new URLSearchParams({
+    origin: "我的位置",
+    destination: `latlng:${activity.meetingLatitude},${activity.meetingLongitude}|name:${activity.meetingName}`,
+    mode: "driving",
+    region: "武汉",
+    coord_type: "wgs84",
+    output: "html",
+    src: "webapp.jiangcheng.atlas",
+  });
+  return `https://api.map.baidu.com/direction?${query}`;
+}
+
+function amapLocationUrl(activity: CityActivity) {
+  const query = new URLSearchParams({
+    position: `${activity.meetingLongitude},${activity.meetingLatitude}`,
+    name: activity.meetingName,
+    coordinate: "wgs84",
+    callnative: "1",
+    src: "jiangcheng-atlas",
+  });
+  return `https://uri.amap.com/marker?${query}`;
 }
 
 function getCoreMapPadding() {
@@ -262,6 +304,19 @@ export function MapExplorer({ initialPlaces }: MapExplorerProps) {
   const categoryActivities = categoryHasActivities ? activities : [];
   const categoryCount = categoryPlaces.length + categoryActivities.length;
   const activeCategoryMeta = explorerCategories.find((item) => item.id === activeCategory) ?? explorerCategories[0];
+  const draftLocationDescription = useMemo(() => {
+    if (!draftLocation) return "地图现在可以直接点击";
+    const nearest = places.reduce<{ place: Place; distance: number } | null>((result, place) => {
+      const distance = Math.hypot(
+        (place.longitude - draftLocation[0]) * Math.cos(draftLocation[1] * Math.PI / 180),
+        place.latitude - draftLocation[1],
+      );
+      return !result || distance < result.distance ? { place, distance } : result;
+    }, null);
+    return nearest && nearest.distance < 0.025
+      ? `靠近 ${nearest.place.name} · 点击地图可调整`
+      : "集合旗标已显示在地图上 · 点击地图可调整";
+  }, [draftLocation, places]);
 
   const switchMapView = useCallback((mode: MapViewMode) => {
     setMapViewMode(mode);
@@ -364,10 +419,19 @@ export function MapExplorer({ initialPlaces }: MapExplorerProps) {
     setBusy(true);
     setNotice("");
     try {
+      const form = new FormData();
+      form.set("activityType", draft.activityType);
+      form.set("title", draft.title);
+      form.set("details", draft.details);
+      form.set("startsAt", draft.startsAt);
+      form.set("meetingName", draft.meetingName);
+      form.set("meetingLongitude", String(draft.meetingLongitude));
+      form.set("meetingLatitude", String(draft.meetingLatitude));
+      form.set("capacity", String(draft.capacity));
+      if (draft.image) form.set("image", draft.image);
       const result = await jsonRequest<{ id: string }>("/api/activities", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(draft),
+        body: form,
       });
       const nextActivities = await refreshActivities();
       setCreateOpen(false);
@@ -469,6 +533,12 @@ export function MapExplorer({ initialPlaces }: MapExplorerProps) {
       setNotice("请选择有效的开始时间。");
       return;
     }
+    const imageValue = form.get("image");
+    const image = imageValue instanceof File && imageValue.size > 0 ? imageValue : null;
+    if (image && (image.size > 5 * 1024 * 1024 || !["image/jpeg", "image/png", "image/webp", "image/avif"].includes(image.type))) {
+      setNotice("封面仅支持 5 MB 内的 JPEG、PNG、WebP 或 AVIF。");
+      return;
+    }
     const draft: ActivityDraft = {
       activityType: String(form.get("activityType")) as ActivityType,
       title: String(form.get("title") ?? "").trim(),
@@ -478,6 +548,7 @@ export function MapExplorer({ initialPlaces }: MapExplorerProps) {
       meetingLongitude: draftLocation[0],
       meetingLatitude: draftLocation[1],
       capacity: Number(form.get("capacity")),
+      image,
     };
     if (!user) {
       setPendingAction({ kind: "publish", draft });
@@ -647,6 +718,32 @@ export function MapExplorer({ initialPlaces }: MapExplorerProps) {
           "icon-ignore-placement": true,
         },
       });
+      map.addSource("draft-location", {
+        type: "geojson",
+        data: toDraftLocationFeatureCollection(null),
+      });
+      map.addLayer({
+        id: "draft-location-halo",
+        type: "circle",
+        source: "draft-location",
+        paint: {
+          "circle-radius": 23,
+          "circle-color": "rgba(216, 255, 62, .34)",
+          "circle-stroke-color": "#101816",
+          "circle-stroke-width": 3,
+        },
+      });
+      map.addLayer({
+        id: "draft-location-icon",
+        type: "symbol",
+        source: "draft-location",
+        layout: {
+          "icon-image": "category-event",
+          "icon-size": 1.62,
+          "icon-allow-overlap": true,
+          "icon-ignore-placement": true,
+        },
+      });
       map.on("click", "place-icons", (event) => {
         if (createOpenRef.current) return;
         const id = event.features?.[0]?.properties?.id as string | undefined;
@@ -701,6 +798,12 @@ export function MapExplorer({ initialPlaces }: MapExplorerProps) {
     source?.setData(toActivityFeatureCollection(visibleActivities));
     mapRef.current?.setLayoutProperty("event-icons", "visibility", categoryHasActivities ? "visible" : "none");
   }, [activities, categoryHasActivities, mapReady, selectedActivity]);
+
+  useEffect(() => {
+    if (!mapReady) return;
+    const source = mapRef.current?.getSource("draft-location") as GeoJSONSource | undefined;
+    source?.setData(toDraftLocationFeatureCollection(createOpen ? draftLocation : null));
+  }, [createOpen, draftLocation, mapReady]);
 
   useEffect(() => {
     const map = mapRef.current;
@@ -811,7 +914,6 @@ export function MapExplorer({ initialPlaces }: MapExplorerProps) {
 
       <aside className="legend-explorer" aria-label="地图分类图例">
         <nav className="legend-rail" aria-label="地图分类">
-          <span className="legend-rail-title">图例</span>
           {explorerCategories.map((item) => {
             const count = item.id === "all"
               ? places.length + activities.length
@@ -892,7 +994,7 @@ export function MapExplorer({ initialPlaces }: MapExplorerProps) {
             <i><CategoryPictogram id="event" /></i>
             <span>
               <b>{draftLocation ? "集合位置已选择" : "先在地图上点一个集合位置"}</b>
-              <small>{draftLocation ? `${draftLocation[1].toFixed(4)}°N · ${draftLocation[0].toFixed(4)}°E` : "地图现在可以直接点击"}</small>
+              <small>{draftLocationDescription}</small>
             </span>
           </div>
           <form onSubmit={submitCreate}>
@@ -903,6 +1005,12 @@ export function MapExplorer({ initialPlaces }: MapExplorerProps) {
             <label>差事标题<input name="title" minLength={4} maxLength={48} placeholder="例如：周六东湖绿道轻松骑" required /></label>
             <label>开始时间<input name="startsAt" type="datetime-local" defaultValue={defaultStartTime()} required /></label>
             <label>集合地点<input name="meetingName" minLength={2} maxLength={80} placeholder="例如：东湖绿道梨园入口" required /></label>
+            <label className="create-image-upload">
+              差事封面
+              <span>上传一张现场或路线图片，让参加者更快认出活动</span>
+              <input name="image" type="file" accept="image/jpeg,image/png,image/webp,image/avif" />
+              <small>支持 JPEG、PNG、WebP、AVIF，最大 5 MB</small>
+            </label>
             <label>活动详情<textarea name="details" minLength={10} maxLength={600} placeholder="行程安排、适合人群、需要携带什么、注意事项……" required /></label>
             <button type="submit" className="create-submit" disabled={busy}>{busy ? "正在发布…" : user ? "发布到地图" : "继续发布"}</button>
             <small className="create-identity-note">{user ? `将以「${user.displayName}」发布` : "可以先填完全部内容，真正发布时再确认身份。"}</small>
@@ -956,7 +1064,12 @@ export function MapExplorer({ initialPlaces }: MapExplorerProps) {
       {selectedActivity && detailPosition && (
         <section className="place-detail event-detail" aria-live="polite" style={{ left: detailPosition.x, top: detailPosition.y }}>
           <button className="detail-close" type="button" onClick={clearSelection} aria-label="关闭差事详情">×</button>
-          <div className="mission-visual">
+          <div
+            className={`mission-visual ${selectedActivity.imageUrl ? "has-image" : ""}`}
+            style={selectedActivity.imageUrl ? {
+              backgroundImage: `linear-gradient(180deg, rgba(11, 28, 25, .08), rgba(11, 28, 25, .74)), url(${JSON.stringify(selectedActivity.imageUrl)})`,
+            } : undefined}
+          >
             <span>EVENT · {activityTypeMeta[selectedActivity.activityType].label}</span>
             <b>{activityTypeMeta[selectedActivity.activityType].short}</b>
             <small>{activityStatusLabel(selectedActivity, currentTime)}</small>
@@ -969,6 +1082,23 @@ export function MapExplorer({ initialPlaces }: MapExplorerProps) {
             <div className="event-facts">
               <span><small>时间</small>{dateLabel(selectedActivity.startsAt)}</span>
               <span><small>队伍</small>{selectedActivity.joinedCount} / {selectedActivity.capacity} 人</span>
+            </div>
+            <div className="event-navigation" aria-label="集合地点导航">
+              <a href={baiduNavigationUrl(selectedActivity)} target="_blank" rel="noreferrer">百度导航</a>
+              <a href={amapLocationUrl(selectedActivity)} target="_blank" rel="noreferrer">高德地图</a>
+              <button
+                type="button"
+                onClick={async () => {
+                  try {
+                    await navigator.clipboard.writeText(window.location.href);
+                    setNotice("差事分享链接已复制。");
+                  } catch {
+                    setNotice("复制失败，请从浏览器地址栏复制链接。");
+                  }
+                }}
+              >
+                复制分享链接
+              </button>
             </div>
             <div className="event-owner">
               <i style={{ background: selectedActivity.creator.avatarColor }}>{selectedActivity.creator.displayName.slice(0, 1)}</i>

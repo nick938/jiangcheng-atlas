@@ -35,6 +35,7 @@ type ActivityRow = {
   starts_at: string; meeting_name: string; meeting_longitude: number; meeting_latitude: number;
   capacity: number; pace: CityActivity["pace"]; status: CityActivity["status"];
   completed_at: string | null; cancelled_at: string | null;
+  image_key: string | null;
   creator_id: string; username: string; display_name: string; avatar_color: string;
   joined_count: number; joined_by_me: number;
 };
@@ -47,6 +48,7 @@ function mapActivityRow(row: ActivityRow, user: CommunityUser | null): CityActiv
     meetingLongitude: row.meeting_longitude, meetingLatitude: row.meeting_latitude,
     capacity: row.capacity, pace: row.pace, status: row.status,
     completedAt: row.completed_at, cancelledAt: row.cancelled_at,
+    imageUrl: row.image_key ? `/media/${row.image_key}` : null,
     creator: { id: row.creator_id, username: row.username, displayName: row.display_name, avatarColor: row.avatar_color },
     joinedCount: Number(row.joined_count), joinedByMe: Number(row.joined_by_me) > 0, isOwner: user?.id === row.creator_id,
   };
@@ -54,7 +56,7 @@ function mapActivityRow(row: ActivityRow, user: CommunityUser | null): CityActiv
 
 const activitySelect = `SELECT a.id, a.activity_type, a.route_id, r.name AS route_name, r.color AS route_color, a.title, a.details,
   a.starts_at, a.meeting_name, a.meeting_longitude, a.meeting_latitude, a.capacity, a.pace, a.status,
-  a.completed_at, a.cancelled_at, u.id AS creator_id, u.username, u.display_name, u.avatar_color,
+  a.completed_at, a.cancelled_at, a.image_key, u.id AS creator_id, u.username, u.display_name, u.avatar_color,
   (SELECT COUNT(*) FROM activity_members m WHERE m.activity_id = a.id) AS joined_count,
   (SELECT COUNT(*) FROM activity_members m WHERE m.activity_id = a.id AND m.user_id = ?) AS joined_by_me
  FROM activities a JOIN users u ON u.id = a.creator_id LEFT JOIN cycling_routes r ON r.id = a.route_id`;
@@ -72,7 +74,7 @@ export async function listMyActivities(db: D1Database, user: CommunityUser): Pro
   const rows = await db.prepare(
     `SELECT a.id, a.activity_type, a.route_id, r.name AS route_name, r.color AS route_color, a.title, a.details,
       a.starts_at, a.meeting_name, a.meeting_longitude, a.meeting_latitude, a.capacity, a.pace, a.status,
-      a.completed_at, a.cancelled_at,
+      a.completed_at, a.cancelled_at, a.image_key,
       u.id AS creator_id, u.username, u.display_name, u.avatar_color,
       (SELECT COUNT(*) FROM activity_members m WHERE m.activity_id = a.id) AS joined_count,
       (SELECT COUNT(*) FROM activity_members m WHERE m.activity_id = a.id AND m.user_id = ?) AS joined_by_me

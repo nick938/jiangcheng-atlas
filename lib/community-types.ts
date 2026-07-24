@@ -42,6 +42,7 @@ export type CityActivity = {
   status: "open" | "cancelled" | "completed";
   completedAt: string | null;
   cancelledAt: string | null;
+  imageUrl: string | null;
   creator: CommunityUser;
   joinedCount: number;
   joinedByMe: boolean;

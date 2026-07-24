@@ -125,7 +125,6 @@ button:focus-visible, input:focus-visible { outline: 3px solid rgba(69, 196, 134
   background: transparent;
   pointer-events: auto;
 }
-.legend-rail-title { display: block; padding: 7px 0; border: 1px solid var(--glass-border); border-radius: 12px; background: var(--glass-soft); box-shadow: 0 7px 22px rgba(21,46,41,.1); color: #a35f41; font-size: 8px; font-weight: 800; letter-spacing: .12em; text-align: center; -webkit-backdrop-filter: var(--glass-filter); backdrop-filter: var(--glass-filter); }
 .legend-rail button {
   position: relative;
   width: 100%;
@@ -156,6 +155,8 @@ button:focus-visible, input:focus-visible { outline: 3px solid rgba(69, 196, 134
   font-weight: 850;
 }
 .legend-rail button i svg { width: 17px; height: 17px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.pictogram-outline { fill: none; stroke: #101816; stroke-width: 5; stroke-linecap: round; stroke-linejoin: round; }
+.pictogram-color { fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
 .legend-rail button span { font-size: 8px; font-weight: 750; }
 .legend-rail button em { position: absolute; top: 3px; right: 2px; min-width: 15px; height: 15px; padding: 0 3px; border: 1px solid rgba(255,255,255,.8); border-radius: 99px; background: rgba(255,253,248,.82); color: #65736f; font: 700 7px/13px var(--font-latin); font-style: normal; }
 
@@ -270,6 +271,8 @@ button:focus-visible, input:focus-visible { outline: 3px solid rgba(69, 196, 134
 .detail-address small { display: block; margin-bottom: 2px; color: #969f9c; font-size: 8px; }
 .share-button { width: 100%; height: 39px; margin-top: 10px; border: 0; border-radius: 11px; background: var(--ink); color: #fff; font-size: 10px; font-weight: 700; cursor: pointer; }
 .mission-visual { height: 92px; position: relative; display: grid; place-items: center; overflow: hidden; color: #fff; background: radial-gradient(circle at 25% 20%, #3c7b6e, transparent 36%), linear-gradient(135deg, #173f3a, #102c29); }
+.mission-visual.has-image { background-position: center; background-size: cover; }
+.mission-visual.has-image b { opacity: 0; }
 .mission-visual::after { content: ""; position: absolute; inset: auto -8% 14px; height: 32px; border: 2px solid rgba(216,255,62,.25); border-radius: 50%; transform: rotate(-4deg); }
 .mission-visual > span { position: absolute; top: 12px; left: 14px; color: #d8ff3e; font: 700 7px/1 var(--font-latin); letter-spacing: .13em; }
 .mission-visual b { z-index: 1; font: 800 38px/1 var(--font-latin); }
@@ -281,6 +284,10 @@ button:focus-visible, input:focus-visible { outline: 3px solid rgba(69, 196, 134
 .event-facts small, .event-owner small { display: block; margin-bottom: 3px; color: #939d99; font-size: 7px; font-weight: 650; }
 .event-owner { display: flex; align-items: center; gap: 8px; margin-top: 8px; color: #435955; font-size: 9px; font-weight: 700; }
 .event-owner i { display: grid; width: 26px; height: 26px; place-items: center; border-radius: 50%; color: #fff; font-size: 10px; font-style: normal; }
+.event-navigation { display: grid; grid-template-columns: 1fr 1fr; gap: 7px; margin-top: 10px; }
+.event-navigation a, .event-navigation button { display: grid; height: 37px; place-items: center; border: 1px solid rgba(24,51,47,.14); border-radius: 10px; background: rgba(245,241,233,.78); color: #24433e; font-size: 9px; font-weight: 750; text-decoration: none; cursor: pointer; }
+.event-navigation a:hover, .event-navigation button:hover { border-color: rgba(69,196,134,.55); background: rgba(232,244,239,.9); }
+.event-navigation button { grid-column: 1 / -1; width: 100%; }
 .event-action:disabled { opacity: .5; cursor: not-allowed; }
 .event-owner-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 7px; margin-top: 10px; }
 .event-owner-actions button, .my-activity-actions button { height: 38px; border: 0; border-radius: 10px; background: var(--ink); color: #fff; font-size: 9px; font-weight: 750; cursor: pointer; }
@@ -304,11 +311,12 @@ button:focus-visible, input:focus-visible { outline: 3px solid rgba(69, 196, 134
   animation: create-panel-in 240ms cubic-bezier(.2,.85,.2,1) both;
   scrollbar-width: thin;
 }
+.create-event-panel { width: min(430px, calc(100vw - 112px)); }
 @keyframes create-panel-in { from { opacity: 0; transform: translateX(12px) scale(.98); } }
 .create-event-panel > header, .my-activities-panel > header { display: flex; align-items: flex-start; gap: 12px; padding: 17px 17px 13px; border-bottom: 1px solid var(--line); }
 .create-event-panel > header > div { flex: 1; }
-.create-event-panel > header span { display: block; margin-bottom: 5px; color: #a35f41; font: 700 7px/1 var(--font-latin); letter-spacing: .15em; }
-.create-event-panel > header h2 { margin: 0; font-size: 20px; letter-spacing: -.04em; }
+.create-event-panel > header span { display: block; margin-bottom: 7px; color: #a35f41; font: 700 9px/1 var(--font-latin); letter-spacing: .15em; }
+.create-event-panel > header h2 { margin: 0; font-size: 25px; letter-spacing: -.04em; }
 .create-event-panel > header > button, .my-activities-panel > header > button { width: 29px; height: 29px; padding: 0; border: 1px solid var(--line); border-radius: 50%; background: #f1ede4; color: #62706c; font-size: 17px; cursor: pointer; }
 .create-location { display: flex; align-items: center; gap: 10px; margin: 13px 15px 4px; padding: 11px; border: 1px dashed rgba(136,184,0,.55); border-radius: 12px; background: rgba(216,255,62,.1); color: #546d18; }
 .create-location.picked { border-style: solid; background: rgba(136,184,0,.13); }
@@ -316,10 +324,10 @@ button:focus-visible, input:focus-visible { outline: 3px solid rgba(69, 196, 134
 .create-location i svg { width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
 .create-location span { min-width: 0; }
 .create-location b, .create-location small { display: block; }
-.create-location b { font-size: 10px; }
-.create-location small { margin-top: 3px; overflow: hidden; color: #809068; font: 600 7px/1 var(--font-latin); text-overflow: ellipsis; white-space: nowrap; }
-.create-event-panel form { display: grid; gap: 9px; padding: 12px 15px 16px; }
-.create-event-panel label, .community-auth-card label { display: grid; gap: 5px; color: #4f625e; font-size: 8px; font-weight: 750; }
+.create-location b { font-size: 13px; }
+.create-location small { margin-top: 5px; overflow: hidden; color: #809068; font-size: 10px; font-weight: 650; line-height: 1.35; text-overflow: ellipsis; white-space: nowrap; }
+.create-event-panel form { display: grid; gap: 13px; padding: 15px 17px 19px; }
+.create-event-panel label, .community-auth-card label { display: grid; gap: 7px; color: #4f625e; font-size: 11px; font-weight: 750; }
 .create-event-panel input, .create-event-panel select, .create-event-panel textarea,
 .community-auth-card input {
   width: 100%;
@@ -329,14 +337,19 @@ button:focus-visible, input:focus-visible { outline: 3px solid rgba(69, 196, 134
   color: var(--ink);
   outline: 0;
 }
-.create-event-panel input, .create-event-panel select, .community-auth-card input { height: 38px; padding: 0 10px; }
-.create-event-panel textarea { min-height: 76px; padding: 9px 10px; resize: vertical; line-height: 1.55; }
+.create-event-panel input, .create-event-panel select, .community-auth-card input { height: 45px; padding: 0 12px; font-size: 12px; }
+.create-event-panel textarea { min-height: 100px; padding: 11px 12px; font-size: 12px; resize: vertical; line-height: 1.55; }
 .create-event-panel input:focus, .create-event-panel select:focus, .create-event-panel textarea:focus,
 .community-auth-card input:focus { border-color: rgba(69,196,134,.75); box-shadow: 0 0 0 3px rgba(69,196,134,.12); }
 .create-form-row { display: grid; grid-template-columns: 1.3fr .7fr; gap: 8px; }
-.create-submit { height: 41px; margin-top: 2px; border: 0; border-radius: 11px; background: var(--ink); color: #fff; font-size: 10px; font-weight: 800; cursor: pointer; }
+.create-image-upload { padding: 12px; border: 1px dashed rgba(24,51,47,.2); border-radius: 12px; background: rgba(255,253,248,.42); }
+.create-image-upload > span { color: #7d8985; font-size: 9px; font-weight: 600; line-height: 1.45; }
+.create-image-upload input[type="file"] { height: auto; min-height: 42px; padding: 6px; background: rgba(243,239,231,.48); cursor: pointer; }
+.create-image-upload input[type="file"]::file-selector-button { height: 30px; margin-right: 10px; padding: 0 12px; border: 0; border-radius: 8px; background: var(--ink); color: #fff; font-size: 10px; font-weight: 750; cursor: pointer; }
+.create-image-upload > small { color: #8b9692; font-size: 9px; font-weight: 600; }
+.create-submit { height: 46px; margin-top: 2px; border: 0; border-radius: 11px; background: var(--ink); color: #fff; font-size: 12px; font-weight: 800; cursor: pointer; }
 .create-submit:disabled { opacity: .55; cursor: wait; }
-.create-identity-note { color: #8b9692; font-size: 7px; line-height: 1.55; text-align: center; }
+.create-identity-note { color: #8b9692; font-size: 9px; line-height: 1.55; text-align: center; }
 .map-picking-location { cursor: crosshair !important; }
 
 .my-activities-panel { display: flex; flex-direction: column; overflow: hidden; }
@@ -416,7 +429,6 @@ button:focus-visible, input:focus-visible { outline: 3px solid rgba(69, 196, 134
   .account-menu { top: calc(100% + 11px); width: 210px; }
   .legend-explorer { top: 76px; left: 10px; gap: 7px; }
   .legend-rail { width: 54px; gap: 5px; padding: 0; }
-  .legend-rail-title { padding: 6px 0; }
   .legend-rail button { margin: 0; padding: 4px 1px; }
   .legend-rail button i { width: 28px; height: 28px; border-radius: 9px; }
   .legend-rail button span { font-size: 7px; }
@@ -428,7 +440,7 @@ button:focus-visible, input:focus-visible { outline: 3px solid rgba(69, 196, 134
   .place-detail { z-index: 25; width: min(300px, calc(100vw - 20px)); }
   .create-event-panel, .my-activities-panel { z-index: 28; top: auto; right: 8px; bottom: 8px; width: calc(100vw - 16px); max-height: min(72vh, 650px); border-radius: 18px; }
   .create-event-panel > header, .my-activities-panel > header { padding: 14px 15px 11px; }
-  .create-event-panel > header h2 { font-size: 18px; }
+  .create-event-panel > header h2 { font-size: 21px; }
   .create-location { margin: 10px 13px 2px; }
   .create-event-panel form { padding: 10px 13px 14px; }
   .community-auth-card { padding: 22px 18px 18px; border-radius: 19px; }
