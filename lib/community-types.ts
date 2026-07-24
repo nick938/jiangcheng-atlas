@@ -34,6 +34,7 @@ export type CityActivity = {
   title: string;
   details: string;
   startsAt: string;
+  endsAt: string;
   meetingName: string;
   meetingLongitude: number;
   meetingLatitude: number;

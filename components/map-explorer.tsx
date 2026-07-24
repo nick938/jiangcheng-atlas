@@ -39,6 +39,7 @@ const SAMPLE_ACTIVITY: CityActivity = {
   title: "周六东湖绿道轻松骑",
   details: "梨园集合，沿湖中道轻松骑行。以看风景、找搭子为主，不拼速度；请自备头盔和饮用水。",
   startsAt: "2026-08-01T00:00:00.000Z",
+  endsAt: "2026-08-01T02:00:00.000Z",
   meetingName: "东湖绿道梨园入口",
   meetingLongitude: 114.386,
   meetingLatitude: 30.5794,
@@ -75,6 +76,7 @@ type ActivityDraft = {
   title: string;
   details: string;
   startsAt: string;
+  endsAt: string;
   meetingName: string;
   meetingLongitude: number;
   meetingLatitude: number;
@@ -206,8 +208,8 @@ function storeMapView(mode: MapViewMode) {
   }
 }
 
-function defaultStartTime() {
-  const date = new Date(Date.now() + 24 * 60 * 60_000);
+function defaultDateTime(offsetHours: number) {
+  const date = new Date(Date.now() + offsetHours * 60 * 60_000);
   const pad = (value: number) => String(value).padStart(2, "0");
   return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:00`;
 }
@@ -222,10 +224,24 @@ function dateLabel(value: string) {
   }).format(new Date(value));
 }
 
+function dateRangeLabel(startsAt: string, endsAt: string) {
+  const start = new Date(startsAt);
+  const end = new Date(endsAt);
+  const sameDay = start.getFullYear() === end.getFullYear()
+    && start.getMonth() === end.getMonth()
+    && start.getDate() === end.getDate();
+  const endLabel = new Intl.DateTimeFormat("zh-CN", sameDay
+    ? { hour: "2-digit", minute: "2-digit" }
+    : { month: "numeric", day: "numeric", weekday: "short", hour: "2-digit", minute: "2-digit" }
+  ).format(end);
+  return `${dateLabel(startsAt)} – ${endLabel}`;
+}
+
 function activityStatusLabel(activity: CityActivity, currentTime: number) {
   if (activity.status === "cancelled") return "已取消";
   if (activity.status === "completed") return "已完成";
-  if (new Date(activity.startsAt).getTime() <= currentTime) return "已结束";
+  if (new Date(activity.endsAt).getTime() <= currentTime) return "已结束";
+  if (new Date(activity.startsAt).getTime() <= currentTime) return "进行中";
   if (activity.joinedCount >= activity.capacity) return "已满员";
   return "正在召集";
 }
@@ -424,6 +440,7 @@ export function MapExplorer({ initialPlaces }: MapExplorerProps) {
       form.set("title", draft.title);
       form.set("details", draft.details);
       form.set("startsAt", draft.startsAt);
+      form.set("endsAt", draft.endsAt);
       form.set("meetingName", draft.meetingName);
       form.set("meetingLongitude", String(draft.meetingLongitude));
       form.set("meetingLatitude", String(draft.meetingLatitude));
@@ -529,8 +546,13 @@ export function MapExplorer({ initialPlaces }: MapExplorerProps) {
     }
     const form = new FormData(event.currentTarget);
     const startTime = new Date(String(form.get("startsAt"))).getTime();
-    if (!Number.isFinite(startTime)) {
-      setNotice("请选择有效的开始时间。");
+    const endTime = new Date(String(form.get("endsAt"))).getTime();
+    if (!Number.isFinite(startTime) || !Number.isFinite(endTime) || endTime < startTime + 15 * 60_000) {
+      setNotice("结束时间至少要比开始时间晚 15 分钟。");
+      return;
+    }
+    if (endTime > startTime + 7 * 86400_000) {
+      setNotice("单次差事的时间跨度不能超过 7 天。");
       return;
     }
     const imageValue = form.get("image");
@@ -544,6 +566,7 @@ export function MapExplorer({ initialPlaces }: MapExplorerProps) {
       title: String(form.get("title") ?? "").trim(),
       details: String(form.get("details") ?? "").trim(),
       startsAt: new Date(startTime).toISOString(),
+      endsAt: new Date(endTime).toISOString(),
       meetingName: String(form.get("meetingName") ?? "").trim(),
       meetingLongitude: draftLocation[0],
       meetingLatitude: draftLocation[1],
@@ -959,7 +982,7 @@ export function MapExplorer({ initialPlaces }: MapExplorerProps) {
                   style={{ "--item-color": EVENT_COLOR } as React.CSSProperties}
                 >
                   <i><CategoryPictogram id="event" /></i>
-                  <span><strong>{activity.title}</strong><small>{activityTypeMeta[activity.activityType].label} · {dateLabel(activity.startsAt)}</small></span>
+                  <span><strong>{activity.title}</strong><small>{activityTypeMeta[activity.activityType].label} · {dateRangeLabel(activity.startsAt, activity.endsAt)}</small></span>
                   <em>↗</em>
                 </button>
               ))}
@@ -1003,7 +1026,10 @@ export function MapExplorer({ initialPlaces }: MapExplorerProps) {
               <label>人数上限<input name="capacity" type="number" min={2} max={50} defaultValue={8} required /></label>
             </div>
             <label>差事标题<input name="title" minLength={4} maxLength={48} placeholder="例如：周六东湖绿道轻松骑" required /></label>
-            <label>开始时间<input name="startsAt" type="datetime-local" defaultValue={defaultStartTime()} required /></label>
+            <div className="create-form-row create-time-row">
+              <label>开始时间<input name="startsAt" type="datetime-local" defaultValue={defaultDateTime(24)} required /></label>
+              <label>结束时间<input name="endsAt" type="datetime-local" defaultValue={defaultDateTime(26)} required /></label>
+            </div>
             <label>集合地点<input name="meetingName" minLength={2} maxLength={80} placeholder="例如：东湖绿道梨园入口" required /></label>
             <label className="create-image-upload">
               差事封面
@@ -1075,12 +1101,12 @@ export function MapExplorer({ initialPlaces }: MapExplorerProps) {
             <small>{activityStatusLabel(selectedActivity, currentTime)}</small>
           </div>
           <div className="detail-body">
-            <div className="detail-tags"><span>差事</span><span>{activityTypeMeta[selectedActivity.activityType].label}</span><span>{dateLabel(selectedActivity.startsAt)}</span></div>
+            <div className="detail-tags"><span>差事</span><span>{activityTypeMeta[selectedActivity.activityType].label}</span><span>{dateRangeLabel(selectedActivity.startsAt, selectedActivity.endsAt)}</span></div>
             <h2>{selectedActivity.title}</h2>
             <h3>集合 · {selectedActivity.meetingName}</h3>
             <p>{selectedActivity.details}</p>
             <div className="event-facts">
-              <span><small>时间</small>{dateLabel(selectedActivity.startsAt)}</span>
+              <span><small>时间段</small>{dateRangeLabel(selectedActivity.startsAt, selectedActivity.endsAt)}</span>
               <span><small>队伍</small>{selectedActivity.joinedCount} / {selectedActivity.capacity} 人</span>
             </div>
             <div className="event-navigation" aria-label="集合地点导航">
@@ -1104,7 +1130,7 @@ export function MapExplorer({ initialPlaces }: MapExplorerProps) {
               <i style={{ background: selectedActivity.creator.avatarColor }}>{selectedActivity.creator.displayName.slice(0, 1)}</i>
               <span><small>发起人</small>{selectedActivity.creator.displayName}</span>
             </div>
-            {selectedActivity.status === "open" && new Date(selectedActivity.startsAt).getTime() > currentTime && (
+            {selectedActivity.status === "open" && new Date(selectedActivity.endsAt).getTime() > currentTime && (
               selectedActivity.isOwner ? (
                 <div className="event-owner-actions">
                   <button type="button" disabled={busy} onClick={() => void updateActivityStatus(selectedActivity, "complete")}>标记完成</button>
@@ -1117,15 +1143,19 @@ export function MapExplorer({ initialPlaces }: MapExplorerProps) {
                 disabled={busy || (
                   selectedActivity.id !== SAMPLE_ACTIVITY.id
                   && !selectedActivity.isOwner
-                  && !selectedActivity.joinedByMe
-                  && selectedActivity.joinedCount >= selectedActivity.capacity
+                  && (
+                    new Date(selectedActivity.startsAt).getTime() <= currentTime
+                    || (!selectedActivity.joinedByMe && selectedActivity.joinedCount >= selectedActivity.capacity)
+                  )
                 )}
                 onClick={() => void mutateActivity(selectedActivity)}
               >
                 {selectedActivity.id === SAMPLE_ACTIVITY.id
                   ? "创建一个类似差事"
-                  : selectedActivity.isOwner
-                    ? "取消这个差事"
+                    : selectedActivity.isOwner
+                      ? "取消这个差事"
+                    : new Date(selectedActivity.startsAt).getTime() <= currentTime
+                      ? "活动进行中"
                     : selectedActivity.joinedByMe
                       ? "退出这次差事"
                       : selectedActivity.joinedCount >= selectedActivity.capacity

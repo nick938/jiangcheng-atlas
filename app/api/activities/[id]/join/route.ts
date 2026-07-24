@@ -16,7 +16,7 @@ export async function POST(request: NextRequest, context: RouteContext<"/api/act
      AND datetime(a.starts_at) > datetime('now')
      AND (SELECT COUNT(*) FROM activity_members m WHERE m.activity_id = a.id) < a.capacity`,
   ).bind(user.id, id).run();
-  if (!result.meta.changes) return NextResponse.json({ error: "活动已满、已结束，或你已经加入" }, { status: 409 });
+  if (!result.meta.changes) return NextResponse.json({ error: "活动已开始、已满员，或你已经加入" }, { status: 409 });
   return NextResponse.json({ joined: true });
 }
 

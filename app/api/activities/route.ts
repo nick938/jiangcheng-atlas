@@ -44,18 +44,21 @@ export async function POST(request: NextRequest) {
   const details = typeof body?.details === "string" ? body.details.trim() : "";
   const activityType = typeof body?.activityType === "string" ? body.activityType as ActivityType : "other";
   const startsAt = typeof body?.startsAt === "string" ? body.startsAt : "";
+  const endsAt = typeof body?.endsAt === "string" ? body.endsAt : "";
   const meetingName = typeof body?.meetingName === "string" ? body.meetingName.trim() : "";
   const meetingLongitude = Number(body?.meetingLongitude);
   const meetingLatitude = Number(body?.meetingLatitude);
   const capacity = Number(body?.capacity);
   const startTime = new Date(startsAt).getTime();
+  const endTime = new Date(endsAt).getTime();
   const validLocation = Number.isFinite(meetingLongitude) && meetingLongitude >= 113.9 && meetingLongitude <= 114.8
     && Number.isFinite(meetingLatitude) && meetingLatitude >= 30.2 && meetingLatitude <= 30.9;
   if (title.length < 4 || title.length > 48 || details.length < 10 || details.length > 600
     || meetingName.length < 2 || meetingName.length > 80 || !Number.isInteger(capacity)
     || capacity < 2 || capacity > 50 || !activityTypes.has(activityType) || !validLocation
-    || !Number.isFinite(startTime) || startTime < Date.now() + 30 * 60_000
-    || startTime > Date.now() + 90 * 86400_000) {
+    || !Number.isFinite(startTime) || !Number.isFinite(endTime)
+    || startTime < Date.now() + 30 * 60_000 || startTime > Date.now() + 90 * 86400_000
+    || endTime < startTime + 15 * 60_000 || endTime > startTime + 7 * 86400_000) {
     return NextResponse.json({ error: "请检查类型、标题、说明、时间、人数和地图位置" }, { status: 400 });
   }
   const id = crypto.randomUUID();
@@ -87,10 +90,10 @@ export async function POST(request: NextRequest) {
   try {
     await env.DB.batch([
       env.DB.prepare(`INSERT INTO activities
-      (id, creator_id, activity_type, title, details, starts_at, meeting_name,
+      (id, creator_id, activity_type, title, details, starts_at, ends_at, meeting_name,
        meeting_longitude, meeting_latitude, capacity, image_key)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
-      .bind(id, user.id, activityType, title, details, new Date(startTime).toISOString(),
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+      .bind(id, user.id, activityType, title, details, new Date(startTime).toISOString(), new Date(endTime).toISOString(),
         meetingName, meetingLongitude, meetingLatitude, capacity, imageKey),
       env.DB.prepare("INSERT INTO activity_members (activity_id, user_id) VALUES (?, ?)").bind(id, user.id),
     ]);

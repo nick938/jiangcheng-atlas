@@ -22,14 +22,28 @@ function dateLabel(value: string) {
   }).format(new Date(value));
 }
 
+function dateRangeLabel(activity: CityActivity) {
+  const start = new Date(activity.startsAt);
+  const end = new Date(activity.endsAt);
+  const sameDay = start.getFullYear() === end.getFullYear()
+    && start.getMonth() === end.getMonth()
+    && start.getDate() === end.getDate();
+  const endLabel = new Intl.DateTimeFormat("zh-CN", sameDay
+    ? { hour: "2-digit", minute: "2-digit" }
+    : { month: "numeric", day: "numeric", weekday: "short", hour: "2-digit", minute: "2-digit" }
+  ).format(end);
+  return `${dateLabel(activity.startsAt)} – ${endLabel}`;
+}
+
 function isCurrent(activity: CityActivity, currentTime: number) {
-  return activity.status === "open" && new Date(activity.startsAt).getTime() > currentTime;
+  return activity.status === "open" && new Date(activity.endsAt).getTime() > currentTime;
 }
 
 function statusLabel(activity: CityActivity, currentTime: number) {
   if (activity.status === "cancelled") return "已取消";
   if (activity.status === "completed") return "已完成";
-  if (new Date(activity.startsAt).getTime() <= currentTime) return "已结束";
+  if (new Date(activity.endsAt).getTime() <= currentTime) return "已结束";
+  if (new Date(activity.startsAt).getTime() <= currentTime) return "进行中";
   if (activity.joinedCount >= activity.capacity) return "已满员";
   return "进行中";
 }
@@ -101,7 +115,7 @@ export function MyActivitiesPanel({
               </span>
               <strong>{activity.title}</strong>
               <span className="my-activity-facts">
-                <small>{dateLabel(activity.startsAt)}</small>
+                <small>{dateRangeLabel(activity)}</small>
                 <small>{activity.meetingName}</small>
                 <small>{activity.joinedCount}/{activity.capacity} 人</small>
               </span>

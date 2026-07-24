@@ -32,7 +32,7 @@ export async function listCyclingRoutes(db: D1Database): Promise<CyclingRoute[]>
 type ActivityRow = {
   id: string; activity_type: ActivityType; route_id: string | null; route_name: string | null;
   route_color: string | null; title: string; details: string;
-  starts_at: string; meeting_name: string; meeting_longitude: number; meeting_latitude: number;
+  starts_at: string; ends_at: string; meeting_name: string; meeting_longitude: number; meeting_latitude: number;
   capacity: number; pace: CityActivity["pace"]; status: CityActivity["status"];
   completed_at: string | null; cancelled_at: string | null;
   image_key: string | null;
@@ -44,7 +44,7 @@ function mapActivityRow(row: ActivityRow, user: CommunityUser | null): CityActiv
   return {
     id: row.id, activityType: row.activity_type, routeId: row.route_id,
     routeName: row.route_name, routeColor: row.route_color,
-    title: row.title, details: row.details, startsAt: row.starts_at, meetingName: row.meeting_name,
+    title: row.title, details: row.details, startsAt: row.starts_at, endsAt: row.ends_at, meetingName: row.meeting_name,
     meetingLongitude: row.meeting_longitude, meetingLatitude: row.meeting_latitude,
     capacity: row.capacity, pace: row.pace, status: row.status,
     completedAt: row.completed_at, cancelledAt: row.cancelled_at,
@@ -55,7 +55,8 @@ function mapActivityRow(row: ActivityRow, user: CommunityUser | null): CityActiv
 }
 
 const activitySelect = `SELECT a.id, a.activity_type, a.route_id, r.name AS route_name, r.color AS route_color, a.title, a.details,
-  a.starts_at, a.meeting_name, a.meeting_longitude, a.meeting_latitude, a.capacity, a.pace, a.status,
+  a.starts_at, COALESCE(a.ends_at, strftime('%Y-%m-%dT%H:%M:%fZ', a.starts_at, '+2 hours')) AS ends_at,
+  a.meeting_name, a.meeting_longitude, a.meeting_latitude, a.capacity, a.pace, a.status,
   a.completed_at, a.cancelled_at, a.image_key, u.id AS creator_id, u.username, u.display_name, u.avatar_color,
   (SELECT COUNT(*) FROM activity_members m WHERE m.activity_id = a.id) AS joined_count,
   (SELECT COUNT(*) FROM activity_members m WHERE m.activity_id = a.id AND m.user_id = ?) AS joined_by_me
@@ -64,7 +65,8 @@ const activitySelect = `SELECT a.id, a.activity_type, a.route_id, r.name AS rout
 export async function listActivities(db: D1Database, user: CommunityUser | null): Promise<CityActivity[]> {
   const rows = await db.prepare(
     `${activitySelect}
-     WHERE a.status = 'open' AND datetime(a.starts_at) > datetime('now')
+     WHERE a.status = 'open'
+       AND datetime(COALESCE(a.ends_at, datetime(a.starts_at, '+2 hours'))) > datetime('now')
      ORDER BY datetime(a.starts_at) ASC LIMIT 50`,
   ).bind(user?.id ?? "").all<ActivityRow>();
   return rows.results.map((row) => mapActivityRow(row, user));
@@ -73,7 +75,8 @@ export async function listActivities(db: D1Database, user: CommunityUser | null)
 export async function listMyActivities(db: D1Database, user: CommunityUser): Promise<CityActivity[]> {
   const rows = await db.prepare(
     `SELECT a.id, a.activity_type, a.route_id, r.name AS route_name, r.color AS route_color, a.title, a.details,
-      a.starts_at, a.meeting_name, a.meeting_longitude, a.meeting_latitude, a.capacity, a.pace, a.status,
+      a.starts_at, COALESCE(a.ends_at, strftime('%Y-%m-%dT%H:%M:%fZ', a.starts_at, '+2 hours')) AS ends_at,
+      a.meeting_name, a.meeting_longitude, a.meeting_latitude, a.capacity, a.pace, a.status,
       a.completed_at, a.cancelled_at, a.image_key,
       u.id AS creator_id, u.username, u.display_name, u.avatar_color,
       (SELECT COUNT(*) FROM activity_members m WHERE m.activity_id = a.id) AS joined_count,
