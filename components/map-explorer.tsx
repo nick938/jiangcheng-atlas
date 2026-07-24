@@ -17,6 +17,9 @@ const WUHAN_MAX_BOUNDS: [[number, number], [number, number]] = [
 ];
 const MAP_STYLE = "https://tiles.openfreemap.org/styles/liberty";
 const EVENT_COLOR = "#88b800";
+const MAP_VIEW_STORAGE_KEY = "jiangcheng-atlas-map-view";
+const MAP_3D_CAMERA = { pitch: 52, bearing: -18 } as const;
+const MAP_2D_CAMERA = { pitch: 0, bearing: 0 } as const;
 
 const activityTypeMeta: Record<ActivityType, { label: string; short: string }> = {
   ride: { label: "骑行", short: "骑" },
@@ -65,6 +68,7 @@ type ActivitiesResponse = {
 type MapExplorerProps = { initialPlaces: Place[] };
 type ScreenPosition = { x: number; y: number };
 type ExplorerCategory = CategoryFilter | "event";
+type MapViewMode = "2d" | "3d";
 type ActivityDraft = {
   activityType: ActivityType;
   title: string;
@@ -144,6 +148,22 @@ function getCoreMapPadding() {
     : { top: 102, right: 38, bottom: 34, left: 100 };
 }
 
+function getStoredMapView(): MapViewMode {
+  try {
+    return window.localStorage.getItem(MAP_VIEW_STORAGE_KEY) === "2d" ? "2d" : "3d";
+  } catch {
+    return "3d";
+  }
+}
+
+function storeMapView(mode: MapViewMode) {
+  try {
+    window.localStorage.setItem(MAP_VIEW_STORAGE_KEY, mode);
+  } catch {
+    // The camera toggle still works when storage is unavailable.
+  }
+}
+
 function defaultStartTime() {
   const date = new Date(Date.now() + 24 * 60 * 60_000);
   const pad = (value: number) => String(value).padStart(2, "0");
@@ -212,6 +232,8 @@ export function MapExplorer({ initialPlaces }: MapExplorerProps) {
   const [mapError, setMapError] = useState(false);
   const [createOpen, setCreateOpen] = useState(false);
   const [myActivitiesOpen, setMyActivitiesOpen] = useState(false);
+  const [accountMenuOpen, setAccountMenuOpen] = useState(false);
+  const [mapViewMode, setMapViewMode] = useState<MapViewMode>("3d");
   const [draftLocation, setDraftLocation] = useState<[number, number] | null>(null);
   const [authOpen, setAuthOpen] = useState(false);
   const [pendingAction, setPendingAction] = useState<PendingAction | null>(null);
@@ -240,6 +262,17 @@ export function MapExplorer({ initialPlaces }: MapExplorerProps) {
   const categoryActivities = categoryHasActivities ? activities : [];
   const categoryCount = categoryPlaces.length + categoryActivities.length;
   const activeCategoryMeta = explorerCategories.find((item) => item.id === activeCategory) ?? explorerCategories[0];
+
+  const switchMapView = useCallback((mode: MapViewMode) => {
+    setMapViewMode(mode);
+    storeMapView(mode);
+    const camera = mode === "3d" ? MAP_3D_CAMERA : MAP_2D_CAMERA;
+    mapRef.current?.easeTo({
+      ...camera,
+      duration: 650,
+      essential: true,
+    });
+  }, []);
 
   const clearSelection = useCallback(() => {
     setSelectedPlaceId(null);
@@ -305,18 +338,22 @@ export function MapExplorer({ initialPlaces }: MapExplorerProps) {
     clearSelection();
     setCreateOpen(false);
     setMyActivitiesOpen(false);
+    setAccountMenuOpen(false);
+    const camera = mapViewMode === "3d" ? MAP_3D_CAMERA : MAP_2D_CAMERA;
     mapRef.current?.fitBounds(WUHAN_CORE_BOUNDS, {
+      ...camera,
       padding: getCoreMapPadding(),
       maxZoom: 12.15,
       duration: 900,
       essential: true,
     });
-  }, [clearSelection]);
+  }, [clearSelection, mapViewMode]);
 
   const openCreatePanel = useCallback((location?: [number, number]) => {
     clearSelection();
     setCategoryListOpen(false);
     setMyActivitiesOpen(false);
+    setAccountMenuOpen(false);
     setActiveCategory("event");
     setDraftLocation(location ?? null);
     setCreateOpen(true);
@@ -393,12 +430,31 @@ export function MapExplorer({ initialPlaces }: MapExplorerProps) {
     clearSelection();
     setCreateOpen(false);
     setCategoryListOpen(false);
+    setAccountMenuOpen(false);
     if (!user) {
       setPendingAction({ kind: "mine" });
       setAuthOpen(true);
       return;
     }
     setMyActivitiesOpen(true);
+  };
+
+  const logout = async () => {
+    setBusy(true);
+    setNotice("");
+    try {
+      await jsonRequest<{ user: null }>("/api/auth/session", { method: "DELETE" });
+      setUser(null);
+      setMyActivities([]);
+      setMyActivitiesOpen(false);
+      setAccountMenuOpen(false);
+      clearSelection();
+      setNotice("已退出登录。");
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : "退出登录失败");
+    } finally {
+      setBusy(false);
+    }
   };
 
   const submitCreate = (event: FormEvent<HTMLFormElement>) => {
@@ -434,6 +490,7 @@ export function MapExplorer({ initialPlaces }: MapExplorerProps) {
   const completeAuthentication = async (authenticatedUser: CommunityUser) => {
     setUser(authenticatedUser);
     setAuthOpen(false);
+    setAccountMenuOpen(false);
     const action = pendingAction;
     setPendingAction(null);
     if (!action) return;
@@ -505,15 +562,24 @@ export function MapExplorer({ initialPlaces }: MapExplorerProps) {
 
   useEffect(() => {
     if (!containerRef.current || mapRef.current) return;
+    const initialMapView = getStoredMapView();
+    const initialCamera = initialMapView === "3d" ? MAP_3D_CAMERA : MAP_2D_CAMERA;
+    setMapViewMode(initialMapView);
     const map = new maplibregl.Map({
       container: containerRef.current,
       style: MAP_STYLE,
       bounds: WUHAN_CORE_BOUNDS,
-      fitBoundsOptions: { padding: getCoreMapPadding(), maxZoom: 12.15 },
+      fitBoundsOptions: {
+        ...initialCamera,
+        padding: getCoreMapPadding(),
+        maxZoom: 12.15,
+      },
+      ...initialCamera,
       maxBounds: WUHAN_MAX_BOUNDS,
       minZoom: 10.2,
       maxZoom: 18,
       attributionControl: false,
+      canvasContextAttributes: { antialias: true },
     });
     mapRef.current = map;
     map.addControl(new maplibregl.NavigationControl({ showCompass: false }), "bottom-right");
@@ -698,9 +764,45 @@ export function MapExplorer({ initialPlaces }: MapExplorerProps) {
           <span><strong>江城图志</strong><small>JIANGCHENG ATLAS</small></span>
         </button>
         <div className="header-actions">
-          <button type="button" className="mission-link my-events-link" onClick={openMyActivities}>
-            我的差事 {user && <span>{user.displayName.slice(0, 1)}</span>}
-          </button>
+          {user ? (
+            <div className="account-shell">
+              <button
+                type="button"
+                className="account-trigger"
+                aria-haspopup="menu"
+                aria-expanded={accountMenuOpen}
+                onClick={() => setAccountMenuOpen((open) => !open)}
+              >
+                <i style={{ background: user.avatarColor }}>{user.displayName.slice(0, 1)}</i>
+                <span><small>已登录</small><strong>{user.displayName}</strong></span>
+                <b aria-hidden="true">⌄</b>
+              </button>
+              {accountMenuOpen && (
+                <div className="account-menu" role="menu">
+                  <button type="button" role="menuitem" onClick={openMyActivities}>
+                    <span><strong>我的差事</strong><small>进行中与历史记录</small></span>
+                    <em>{myActivities.length}</em>
+                  </button>
+                  <button type="button" role="menuitem" className="account-logout" disabled={busy} onClick={() => void logout()}>
+                    <span><strong>退出登录</strong><small>下次需要时再登录</small></span>
+                    <em>↗</em>
+                  </button>
+                </div>
+              )}
+            </div>
+          ) : (
+            <button
+              type="button"
+              className="mission-link account-login"
+              onClick={() => {
+                setPendingAction(null);
+                setAccountMenuOpen(false);
+                setAuthOpen(true);
+              }}
+            >
+              登录 / 注册
+            </button>
+          )}
           <button type="button" className="mission-link create-event-link" onClick={() => openCreatePanel()}>
             创建差事 <span>＋</span>
           </button>
@@ -914,7 +1016,33 @@ export function MapExplorer({ initialPlaces }: MapExplorerProps) {
       )}
       {notice && <button type="button" className="map-notice map-toast" onClick={() => setNotice("")}>{notice} ×</button>}
       {mapError && <div className="map-notice">底图暂时无法加载，请检查网络后刷新。</div>}
-      <div className="map-caption"><span>汉口</span><i /><span>武昌</span><i /><span>汉阳</span></div>
+      <div className="map-view-switch" role="group" aria-label="地图视角">
+        <span>视角</span>
+        <button
+          type="button"
+          className={mapViewMode === "3d" ? "active" : ""}
+          aria-pressed={mapViewMode === "3d"}
+          onClick={() => switchMapView("3d")}
+        >
+          <svg viewBox="0 0 24 24" aria-hidden="true">
+            <path d="m12 3 8 4.5-8 4.5-8-4.5L12 3Z" />
+            <path d="m4 7.5 8 4.5 8-4.5M4 12l8 4.5 8-4.5M4 16.5l8 4.5 8-4.5" />
+          </svg>
+          3D
+        </button>
+        <button
+          type="button"
+          className={mapViewMode === "2d" ? "active" : ""}
+          aria-pressed={mapViewMode === "2d"}
+          onClick={() => switchMapView("2d")}
+        >
+          <svg viewBox="0 0 24 24" aria-hidden="true">
+            <path d="m3 6 6-3 6 3 6-3v15l-6 3-6-3-6 3V6Z" />
+            <path d="M9 3v15M15 6v15" />
+          </svg>
+          2D
+        </button>
+      </div>
     </main>
   );
 }
