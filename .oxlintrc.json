@@ -1,0 +1,29 @@
+{
+  "$schema": "./node_modules/oxlint/configuration_schema.json",
+  "plugins": [
+    "oxc",
+    "typescript",
+    "unicorn",
+    "react",
+    "jsx-a11y",
+    "nextjs",
+    "import"
+  ],
+  "env": {
+    "browser": true,
+    "node": true
+  },
+  "ignorePatterns": [
+    "node_modules/**",
+    ".next/**",
+    "out/**",
+    "build/**",
+    ".open-next/**",
+    ".wrangler/**",
+    "cloudflare-env.d.ts",
+    "next-env.d.ts"
+  ],
+  "options": {
+    "typeAware": true
+  }
+}
