@@ -2,10 +2,11 @@
 
 import Link from "next/link";
 import Image from "next/image";
-import { useMemo, useState, type FormEvent } from "react";
+import { useCallback, useMemo, useState, type FormEvent } from "react";
 import styles from "./admin-console.module.css";
 import { categoryMeta, type AdminPlace, type CategoryId } from "@/lib/places";
 import type { PlaceInput } from "@/lib/place-validation";
+import { CommunityGovernance } from "@/components/community-governance";
 
 const emptyForm: PlaceInput = {
   slug: "",
@@ -34,11 +35,13 @@ export function AdminConsole({ initialAuthenticated, initialPlaces }: AdminConso
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
+  const [section, setSection] = useState<"places" | "community">("places");
 
   const editingPlace = useMemo(
     () => places.find((place) => place.id === editingId) ?? null,
     [editingId, places],
   );
+  const handleUnauthorized = useCallback(() => setAuthenticated(false), []);
 
   async function loadPlaces() {
     setLoading(true);
@@ -224,10 +227,16 @@ export function AdminConsole({ initialAuthenticated, initialPlaces }: AdminConso
     <main className={styles.adminPage}>
       <header className={styles.header}>
         <div><p className={styles.eyebrow}>JIANGCHENG ATLAS</p><h1>图志管理台</h1></div>
-        <nav><Link href="/" target="_blank">查看地图 ↗</Link><button type="button" onClick={logout} disabled={busy}>退出</button></nav>
+        <nav>
+          <button type="button" className={section === "places" ? styles.navActive : ""} onClick={() => setSection("places")}>地点资料</button>
+          <button type="button" className={section === "community" ? styles.navActive : ""} onClick={() => setSection("community")}>社区治理</button>
+          <Link href="/" target="_blank">查看地图 ↗</Link><button type="button" onClick={logout} disabled={busy}>退出</button>
+        </nav>
       </header>
 
-      <div className={styles.workspace}>
+      {section === "community" ? (
+        <CommunityGovernance onUnauthorized={handleUnauthorized} />
+      ) : <div className={styles.workspace}>
         <aside className={styles.placeSidebar}>
           <div className={styles.sidebarHeading}>
             <div><strong>地点资料</strong><span>{places.length} 条有效记录</span></div>
@@ -278,7 +287,7 @@ export function AdminConsole({ initialAuthenticated, initialPlaces }: AdminConso
             </form>
           </section>
         </section>
-      </div>
+      </div>}
     </main>
   );
 }

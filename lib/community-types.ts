@@ -48,6 +48,26 @@ export type CityActivity = {
   joinedCount: number;
   joinedByMe: boolean;
   isOwner: boolean;
+  commentCount: number;
+};
+
+export type ActivityComment = {
+  id: string;
+  activityId: string;
+  body: string;
+  createdAt: string;
+  author: CommunityUser;
+  isOwner: boolean;
+};
+
+export type CommunityNotification = {
+  id: string;
+  activityId: string | null;
+  type: "activity_joined" | "activity_updated" | "activity_cancelled" | "new_comment" | "moderation";
+  title: string;
+  body: string;
+  readAt: string | null;
+  createdAt: string;
 };
 
 export type CommunitySnapshot = {

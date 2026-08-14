@@ -5,6 +5,7 @@ import { getCookieValue } from "@/lib/admin-auth";
 
 export const USER_COOKIE_NAME = "jc_user_session";
 const SESSION_SECONDS = 60 * 60 * 24 * 30;
+const PASSWORD_ITERATIONS = 210_000;
 const encoder = new TextEncoder();
 
 function toHex(bytes: Uint8Array) {
@@ -35,6 +36,58 @@ export async function passwordFingerprint(username: string, password: string, se
     encoder.encode(`${username.toLowerCase()}\0${password}`),
   );
   return toHex(new Uint8Array(signature));
+}
+
+function randomHex(length: number) {
+  return toHex(crypto.getRandomValues(new Uint8Array(length)));
+}
+
+function hexBytes(value: string) {
+  if (!/^[0-9a-f]+$/i.test(value) || value.length % 2 !== 0) return null;
+  return Uint8Array.from(value.match(/.{2}/g) ?? [], (byte) => Number.parseInt(byte, 16));
+}
+
+async function pbkdf2(password: string, secret: string, salt: string, iterations: number) {
+  const saltBytes = hexBytes(salt);
+  if (!saltBytes || iterations < 100_000 || iterations > 1_000_000) return "";
+  const key = await crypto.subtle.importKey(
+    "raw",
+    encoder.encode(`${password}\0${secret}`),
+    "PBKDF2",
+    false,
+    ["deriveBits"],
+  );
+  const bits = await crypto.subtle.deriveBits(
+    { name: "PBKDF2", hash: "SHA-256", salt: saltBytes, iterations },
+    key,
+    256,
+  );
+  return toHex(new Uint8Array(bits));
+}
+
+export async function hashPassword(password: string, secret: string) {
+  const salt = randomHex(16);
+  return {
+    passwordHash: await pbkdf2(password, secret, salt, PASSWORD_ITERATIONS),
+    passwordSalt: salt,
+    passwordIterations: PASSWORD_ITERATIONS,
+  };
+}
+
+export async function verifyPassword(input: {
+  username: string;
+  password: string;
+  secret: string;
+  expectedHash: string;
+  salt: string | null;
+  iterations: number | null;
+}) {
+  if (input.salt && input.iterations) {
+    const candidate = await pbkdf2(input.password, input.secret, input.salt, input.iterations);
+    return fingerprintsMatch(candidate, input.expectedHash);
+  }
+  const legacy = await passwordFingerprint(input.username, input.password, input.secret);
+  return fingerprintsMatch(legacy, input.expectedHash);
 }
 
 export function fingerprintsMatch(left: string, right: string) {

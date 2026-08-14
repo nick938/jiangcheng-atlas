@@ -1,6 +1,6 @@
 "use client";
 
-import { type FormEvent, useState } from "react";
+import { type FormEvent, useEffect, useState } from "react";
 import type { CommunityUser } from "@/lib/community-types";
 
 type CommunityAuthModalProps = {
@@ -23,6 +23,16 @@ export function CommunityAuthModal({ onClose, onAuthenticated }: CommunityAuthMo
   const [mode, setMode] = useState<"register" | "login">("register");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
+  const [wechatConfigured, setWechatConfigured] = useState(false);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    fetch("/api/auth/wechat/status", { signal: controller.signal, cache: "no-store" })
+      .then((response) => response.json())
+      .then((payload) => setWechatConfigured(Boolean((payload as { configured?: boolean }).configured)))
+      .catch(() => undefined);
+    return () => controller.abort();
+  }, []);
 
   const submit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -63,6 +73,12 @@ export function CommunityAuthModal({ onClose, onAuthenticated }: CommunityAuthMo
             {busy ? "正在确认…" : mode === "register" ? "创建身份并继续" : "登录并继续"}
           </button>
         </form>
+        <div className="community-auth-divider"><span>或</span></div>
+        <a className={wechatConfigured ? "wechat-login" : "wechat-login disabled"} href={wechatConfigured ? "/api/auth/wechat/start" : undefined} aria-disabled={!wechatConfigured}>
+          <b aria-hidden="true">微</b><span>{wechatConfigured ? "使用微信扫码登录" : "微信登录等待开放平台配置"}</span>
+        </a>
+        <small className="wechat-login-note">需要已审核的网站应用 AppID、AppSecret 与正式回调域名。</small>
+        <p className="community-policy-links">继续即表示同意 <a href="/community-guidelines" target="_blank">社区公约</a> 与 <a href="/privacy" target="_blank">隐私说明</a>。</p>
       </section>
     </div>
   );

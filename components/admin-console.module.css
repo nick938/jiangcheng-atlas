@@ -20,6 +20,7 @@
 .header h1 { margin: 0; font-size: 2rem; letter-spacing: -.04em; }
 .header nav { display: flex; align-items: center; gap: 10px; }
 .header nav a, .header nav button { height: 38px; display: inline-flex; align-items: center; padding: 0 14px; border: 1px solid rgba(24,51,47,.15); border-radius: 10px; background: transparent; color: #18332f; font-size: 1rem; font-weight: 700; text-decoration: none; cursor: pointer; }
+.header nav .navActive { background: #18332f; color: #fff; }
 .workspace { height: calc(100vh - 84px); display: grid; grid-template-columns: 330px 1fr; }
 .placeSidebar { min-height: 0; display: flex; flex-direction: column; border-right: 1px solid rgba(24,51,47,.12); background: #f6f2ea; }
 .sidebarHeading { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 19px 17px; border-bottom: 1px solid rgba(24,51,47,.11); }
@@ -63,10 +64,35 @@
 .uploadSection form button { height: 38px; flex: 0 0 auto; padding: 0 13px; border: 0; border-radius: 9px; background: #4a776e; color: #fff; font-size: .9375rem; font-weight: 700; cursor: pointer; }
 .uploadSection form button:disabled { opacity: .45; cursor: not-allowed; }
 
+.governance { height: calc(100vh - 84px); overflow-y: auto; padding: 30px max(24px, calc((100vw - 1120px) / 2)); background: #e8ede7; }
+.governanceHeading { display: flex; align-items: center; justify-content: space-between; gap: 20px; }
+.governanceHeading h2 { margin: 0; font-size: 2.125rem; letter-spacing: -.045em; }
+.governanceHeading span { display: block; margin-top: 8px; color: #6d7e79; }
+.governanceHeading > button { height: 40px; padding: 0 14px; border: 1px solid rgba(24,51,47,.18); border-radius: 10px; background: #fffdf8; color: #18332f; font-weight: 700; cursor: pointer; }
+.governanceTabs { display: flex; gap: 8px; margin: 24px 0 14px; }
+.governanceTabs button { height: 42px; padding: 0 14px; border: 1px solid rgba(24,51,47,.12); border-radius: 11px; background: rgba(255,253,248,.72); color: #536863; font-weight: 750; cursor: pointer; }
+.governanceTabs button.active { background: #18332f; color: #fff; }
+.governanceTabs em { margin-left: 6px; font-style: normal; opacity: .7; }
+.governanceList { display: grid; gap: 12px; }
+.governanceList article { padding: 20px; border: 1px solid rgba(255,255,255,.8); border-radius: 16px; background: #fffdf8; box-shadow: 0 10px 32px rgba(24,51,47,.06); }
+.governanceList h3 { margin: 12px 0 6px; font-size: 1.25rem; }
+.governanceList p { margin: 0; color: #667873; line-height: 1.65; }
+.governanceList small { display: block; margin-top: 8px; color: #87938f; }
+.governanceMeta { display: flex; align-items: center; gap: 10px; font-size: .9375rem; }
+.governanceMeta b { color: #9b6048; }
+.governanceMeta span { color: #84918d; }
+.governanceMeta em { margin-left: auto; padding: 4px 8px; border-radius: 99px; background: #edf1ed; color: #4d645e; font-style: normal; }
+.governanceMeta em[data-status="open"], .governanceMeta em[data-status="hidden"], .governanceMeta em[data-status="suspended"] { background: #fde9e5; color: #922f25; }
+.governanceActions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 16px; }
+.governanceActions button { height: 36px; padding: 0 12px; border: 0; border-radius: 9px; background: #18332f; color: #fff; font-weight: 700; cursor: pointer; }
+.governanceActions button.subtle { border: 1px solid rgba(24,51,47,.16); background: transparent; color: #526762; }
+.governanceActions button:disabled { opacity: .45; }
+
 @media (max-width: 800px) {
   .adminPage { height: auto; min-height: 100vh; overflow: auto; }
   .header { height: auto; padding: 16px; }
   .header nav a { display: none; }
+  .header nav { flex-wrap: wrap; justify-content: flex-end; }
   .workspace { height: auto; display: block; }
   .placeSidebar { max-height: 340px; border-right: 0; border-bottom: 1px solid rgba(24,51,47,.12); }
   .placeList { max-height: 260px; }
@@ -79,4 +105,7 @@
   .uploadSection { grid-template-columns: 1fr; }
   .uploadSection > img { grid-row: auto; }
   .uploadSection form { grid-column: auto; align-items: stretch; flex-direction: column; }
+  .governance { height: auto; padding: 22px 14px 40px; }
+  .governanceHeading { align-items: flex-start; }
+  .governanceTabs { overflow-x: auto; }
 }

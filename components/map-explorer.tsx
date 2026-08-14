@@ -4,6 +4,10 @@ import maplibregl, { type GeoJSONSource, type Map as MapLibreMap } from "maplibr
 import { type FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { CommunityAuthModal } from "@/components/community-auth-modal";
 import { MyActivitiesPanel } from "@/components/my-activities-panel";
+import { ActivityDiscussion } from "@/components/activity-discussion";
+import { EditActivityPanel } from "@/components/edit-activity-panel";
+import { NotificationsPanel } from "@/components/notifications-panel";
+import { ProfilePanel } from "@/components/profile-panel";
 import type { ActivityType, CityActivity, CommunityUser } from "@/lib/community-types";
 import { categoryMeta, type CategoryFilter, type Place } from "@/lib/places";
 
@@ -28,36 +32,6 @@ const activityTypeMeta: Record<ActivityType, { label: string; short: string }> =
   food: { label: "吃喝", short: "食" },
   photo: { label: "拍照", short: "拍" },
   other: { label: "其他召集", short: "集" },
-};
-
-const SAMPLE_ACTIVITY: CityActivity = {
-  id: "east-lake-ride-sample",
-  activityType: "ride",
-  routeId: null,
-  routeName: null,
-  routeColor: null,
-  title: "周六东湖绿道轻松骑",
-  details: "梨园集合，沿湖中道轻松骑行。以看风景、找搭子为主，不拼速度；请自备头盔和饮用水。",
-  startsAt: "2026-08-01T00:00:00.000Z",
-  endsAt: "2026-08-01T02:00:00.000Z",
-  meetingName: "东湖绿道梨园入口",
-  meetingLongitude: 114.386,
-  meetingLatitude: 30.5794,
-  capacity: 8,
-  pace: null,
-  status: "open",
-  completedAt: null,
-  cancelledAt: null,
-  imageUrl: null,
-  creator: {
-    id: "sample-organizer",
-    username: "jiangcheng",
-    displayName: "江城图志",
-    avatarColor: "#173f3a",
-  },
-  joinedCount: 1,
-  joinedByMe: false,
-  isOwner: false,
 };
 
 type PlacesResponse = { places: Place[]; source: "d1" | "seed" };
@@ -246,6 +220,11 @@ function activityStatusLabel(activity: CityActivity, currentTime: number) {
   return "正在召集";
 }
 
+function formString(form: FormData, name: string) {
+  const value = form.get(name);
+  return typeof value === "string" ? value : "";
+}
+
 async function jsonRequest<T>(path: string, options?: RequestInit): Promise<T> {
   const response = await fetch(path, options);
   const result = await response.json() as T & { error?: string };
@@ -274,11 +253,11 @@ export function MapExplorer({ initialPlaces }: MapExplorerProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<MapLibreMap | null>(null);
   const placesRef = useRef(initialPlaces);
-  const activitiesRef = useRef<CityActivity[]>([SAMPLE_ACTIVITY]);
+  const activitiesRef = useRef<CityActivity[]>([]);
   const createOpenRef = useRef(false);
   const [currentTime] = useState(() => Date.now());
   const [places, setPlaces] = useState(initialPlaces);
-  const [activities, setActivities] = useState<CityActivity[]>([SAMPLE_ACTIVITY]);
+  const [activities, setActivities] = useState<CityActivity[]>([]);
   const [myActivities, setMyActivities] = useState<CityActivity[]>([]);
   const [user, setUser] = useState<CommunityUser | null>(null);
   const [selectedPlaceId, setSelectedPlaceId] = useState<string | null>(null);
@@ -290,6 +269,9 @@ export function MapExplorer({ initialPlaces }: MapExplorerProps) {
   const [mapError, setMapError] = useState(false);
   const [createOpen, setCreateOpen] = useState(false);
   const [myActivitiesOpen, setMyActivitiesOpen] = useState(false);
+  const [notificationsOpen, setNotificationsOpen] = useState(false);
+  const [editingActivity, setEditingActivity] = useState<CityActivity | null>(null);
+  const [profileOpen, setProfileOpen] = useState(false);
   const [accountMenuOpen, setAccountMenuOpen] = useState(false);
   const [mapViewMode, setMapViewMode] = useState<MapViewMode>("3d");
   const [draftLocation, setDraftLocation] = useState<[number, number] | null>(null);
@@ -391,16 +373,12 @@ export function MapExplorer({ initialPlaces }: MapExplorerProps) {
   const refreshActivities = useCallback(async () => {
     try {
       const payload = await jsonRequest<ActivitiesResponse>("/api/activities", { cache: "no-store" });
-      const merged = [
-        SAMPLE_ACTIVITY,
-        ...payload.activities.filter((activity) => activity.id !== SAMPLE_ACTIVITY.id),
-      ];
-      setActivities(merged);
+      setActivities(payload.activities);
       setMyActivities(payload.myActivities);
       setUser(payload.user);
-      return merged;
+      return payload.activities;
     } catch (error) {
-      console.warn("Using the bundled sample activity.", error);
+      console.warn("Unable to refresh activities.", error);
       return activitiesRef.current;
     }
   }, []);
@@ -428,7 +406,7 @@ export function MapExplorer({ initialPlaces }: MapExplorerProps) {
     setActiveCategory("event");
     setDraftLocation(location ?? null);
     setCreateOpen(true);
-    setNotice(location ? "已带入示例活动的集合位置，可以继续调整。" : "点击地图，选择差事的集合位置。");
+    setNotice(location ? "已带入集合位置，可以继续调整。" : "点击地图，选择差事的集合位置。");
   }, [clearSelection]);
 
   const publishDraft = useCallback(async (draft: ActivityDraft) => {
@@ -463,10 +441,6 @@ export function MapExplorer({ initialPlaces }: MapExplorerProps) {
   }, [focusActivity, refreshActivities]);
 
   const mutateActivity = useCallback(async (activity: CityActivity) => {
-    if (activity.id === SAMPLE_ACTIVITY.id) {
-      openCreatePanel([activity.meetingLongitude, activity.meetingLatitude]);
-      return;
-    }
     if (!user) {
       setPendingAction({ kind: "join", activityId: activity.id });
       setAuthOpen(true);
@@ -486,7 +460,7 @@ export function MapExplorer({ initialPlaces }: MapExplorerProps) {
     } finally {
       setBusy(false);
     }
-  }, [focusActivity, openCreatePanel, refreshActivities, user]);
+  }, [focusActivity, refreshActivities, user]);
 
   const updateActivityStatus = useCallback(async (activity: CityActivity, action: "complete" | "cancel") => {
     const prompt = action === "complete"
@@ -510,6 +484,7 @@ export function MapExplorer({ initialPlaces }: MapExplorerProps) {
   const openMyActivities = () => {
     clearSelection();
     setCreateOpen(false);
+    setNotificationsOpen(false);
     setCategoryListOpen(false);
     setAccountMenuOpen(false);
     if (!user) {
@@ -528,6 +503,7 @@ export function MapExplorer({ initialPlaces }: MapExplorerProps) {
       setUser(null);
       setMyActivities([]);
       setMyActivitiesOpen(false);
+      setNotificationsOpen(false);
       setAccountMenuOpen(false);
       clearSelection();
       setNotice("已退出登录。");
@@ -545,8 +521,8 @@ export function MapExplorer({ initialPlaces }: MapExplorerProps) {
       return;
     }
     const form = new FormData(event.currentTarget);
-    const startTime = new Date(String(form.get("startsAt"))).getTime();
-    const endTime = new Date(String(form.get("endsAt"))).getTime();
+    const startTime = new Date(formString(form, "startsAt")).getTime();
+    const endTime = new Date(formString(form, "endsAt")).getTime();
     if (!Number.isFinite(startTime) || !Number.isFinite(endTime) || endTime < startTime + 15 * 60_000) {
       setNotice("结束时间至少要比开始时间晚 15 分钟。");
       return;
@@ -562,12 +538,12 @@ export function MapExplorer({ initialPlaces }: MapExplorerProps) {
       return;
     }
     const draft: ActivityDraft = {
-      activityType: String(form.get("activityType")) as ActivityType,
-      title: String(form.get("title") ?? "").trim(),
-      details: String(form.get("details") ?? "").trim(),
+      activityType: formString(form, "activityType") as ActivityType,
+      title: formString(form, "title").trim(),
+      details: formString(form, "details").trim(),
       startsAt: new Date(startTime).toISOString(),
       endsAt: new Date(endTime).toISOString(),
-      meetingName: String(form.get("meetingName") ?? "").trim(),
+      meetingName: formString(form, "meetingName").trim(),
       meetingLongitude: draftLocation[0],
       meetingLatitude: draftLocation[1],
       capacity: Number(form.get("capacity")),
@@ -653,6 +629,28 @@ export function MapExplorer({ initialPlaces }: MapExplorerProps) {
     queueMicrotask(() => void refreshActivities());
     return () => controller.abort();
   }, [refreshActivities]);
+
+  useEffect(() => {
+    const url = new URL(window.location.href);
+    const category = url.searchParams.get("category");
+    if (category && explorerCategories.some((item) => item.id === category)) {
+      setActiveCategory(category as ExplorerCategory);
+      setCategoryListOpen(true);
+    }
+    const wechat = url.searchParams.get("wechat");
+    if (wechat) {
+      const messages: Record<string, string> = {
+        success: "微信登录成功。",
+        unavailable: "微信登录尚未配置开放平台凭证。",
+        invalid: "微信登录校验失败，请重新扫码。",
+        failed: "微信登录失败，请稍后重试。",
+        suspended: "该微信账号关联的社区身份已被停用。",
+      };
+      setNotice(messages[wechat] ?? "微信登录未完成。");
+      url.searchParams.delete("wechat");
+      window.history.replaceState(null, "", url);
+    }
+  }, []);
 
   useEffect(() => {
     if (!containerRef.current || mapRef.current) return;
@@ -819,7 +817,10 @@ export function MapExplorer({ initialPlaces }: MapExplorerProps) {
       ? [...activities, selectedActivity]
       : activities;
     source?.setData(toActivityFeatureCollection(visibleActivities));
-    mapRef.current?.setLayoutProperty("event-icons", "visibility", categoryHasActivities ? "visible" : "none");
+    const map = mapRef.current;
+    if (map?.getLayer("event-icons")) {
+      map.setLayoutProperty("event-icons", "visibility", categoryHasActivities ? "visible" : "none");
+    }
   }, [activities, categoryHasActivities, mapReady, selectedActivity]);
 
   useEffect(() => {
@@ -908,6 +909,14 @@ export function MapExplorer({ initialPlaces }: MapExplorerProps) {
                   <button type="button" role="menuitem" onClick={openMyActivities}>
                     <span><strong>我的差事</strong><small>进行中与历史记录</small></span>
                     <em>{myActivities.length}</em>
+                  </button>
+                  <button type="button" role="menuitem" onClick={() => { setAccountMenuOpen(false); setProfileOpen(true); }}>
+                    <span><strong>个人资料</strong><small>修改昵称或注销账号</small></span>
+                    <em>↗</em>
+                  </button>
+                  <button type="button" role="menuitem" onClick={() => { setAccountMenuOpen(false); setMyActivitiesOpen(false); setNotificationsOpen(true); }}>
+                    <span><strong>消息中心</strong><small>活动更新、留言与报名提醒</small></span>
+                    <em>↗</em>
                   </button>
                   <button type="button" role="menuitem" className="account-logout" disabled={busy} onClick={() => void logout()}>
                     <span><strong>退出登录</strong><small>下次需要时再登录</small></span>
@@ -1060,6 +1069,29 @@ export function MapExplorer({ initialPlaces }: MapExplorerProps) {
         />
       )}
 
+      {notificationsOpen && user && <NotificationsPanel
+        onClose={() => setNotificationsOpen(false)}
+        onSelectActivity={(id) => {
+          const activity = activities.find((item) => item.id === id) ?? myActivities.find((item) => item.id === id);
+          if (activity) { setNotificationsOpen(false); focusActivity(activity); }
+        }}
+      />}
+
+      {editingActivity && <EditActivityPanel
+        activity={editingActivity}
+        onClose={() => setEditingActivity(null)}
+        onSaved={async () => { await refreshActivities(); }}
+        onNotice={setNotice}
+      />}
+
+      {profileOpen && user && <ProfilePanel
+        user={user}
+        onClose={() => setProfileOpen(false)}
+        onUpdated={setUser}
+        onDeleted={() => { setUser(null); setMyActivities([]); setProfileOpen(false); clearSelection(); }}
+        onNotice={setNotice}
+      />}
+
       {selectedPlace && detailPosition && (
         <section className="place-detail" aria-live="polite" style={{ left: detailPosition.x, top: detailPosition.y }}>
           <button className="detail-close" type="button" onClick={clearSelection} aria-label="关闭地点详情">×</button>
@@ -1133,6 +1165,7 @@ export function MapExplorer({ initialPlaces }: MapExplorerProps) {
             {selectedActivity.status === "open" && new Date(selectedActivity.endsAt).getTime() > currentTime && (
               selectedActivity.isOwner ? (
                 <div className="event-owner-actions">
+                  {new Date(selectedActivity.startsAt).getTime() > currentTime && <button type="button" disabled={busy} onClick={() => setEditingActivity(selectedActivity)}>编辑活动</button>}
                   <button type="button" disabled={busy} onClick={() => void updateActivityStatus(selectedActivity, "complete")}>标记完成</button>
                   <button type="button" className="danger" disabled={busy} onClick={() => void updateActivityStatus(selectedActivity, "cancel")}>取消差事</button>
                 </div>
@@ -1141,8 +1174,7 @@ export function MapExplorer({ initialPlaces }: MapExplorerProps) {
                 type="button"
                 className="share-button event-action"
                 disabled={busy || (
-                  selectedActivity.id !== SAMPLE_ACTIVITY.id
-                  && !selectedActivity.isOwner
+                  !selectedActivity.isOwner
                   && (
                     new Date(selectedActivity.startsAt).getTime() <= currentTime
                     || (!selectedActivity.joinedByMe && selectedActivity.joinedCount >= selectedActivity.capacity)
@@ -1150,9 +1182,7 @@ export function MapExplorer({ initialPlaces }: MapExplorerProps) {
                 )}
                 onClick={() => void mutateActivity(selectedActivity)}
               >
-                {selectedActivity.id === SAMPLE_ACTIVITY.id
-                  ? "创建一个类似差事"
-                    : selectedActivity.isOwner
+                {selectedActivity.isOwner
                       ? "取消这个差事"
                     : new Date(selectedActivity.startsAt).getTime() <= currentTime
                       ? "活动进行中"
@@ -1164,6 +1194,13 @@ export function MapExplorer({ initialPlaces }: MapExplorerProps) {
               </button>
               )
             )}
+            <ActivityDiscussion
+              activity={selectedActivity}
+              user={user}
+              onRequireAuth={() => { setPendingAction(null); setAuthOpen(true); }}
+              onNotice={setNotice}
+              onChanged={refreshActivities}
+            />
           </div>
         </section>
       )}

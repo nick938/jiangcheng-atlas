@@ -230,6 +230,22 @@ const seedPlaceData: Place[] = [
     categoryId: "food",
     featured: true,
   },
+  { id: "wuhan-yangtze-bridge", slug: "wuhan-yangtze-bridge", name: "武汉长江大桥", subtitle: "一桥飞架南北的江城坐标", description: "从龟山、蛇山或轮渡上观察这座公铁两用桥，可以直观理解武汉因江而生的交通格局。", longitude: 114.297, latitude: 30.547, district: "武昌区", address: "临江大道与龟山南路之间", categoryId: "landmark", featured: true },
+  { id: "jianghanguan-museum", slug: "jianghanguan-museum", name: "江汉关博物馆", subtitle: "钟楼下的汉口开埠记忆", description: "江汉关大楼位于江汉路与沿江大道交会处，适合作为汉口历史建筑漫步的起点。", longitude: 114.2921, latitude: 30.5787, district: "江汉区", address: "沿江大道129号", categoryId: "landmark", featured: true },
+  { id: "wuchang-uprising", slug: "wuchang-uprising", name: "辛亥革命武昌起义纪念馆", subtitle: "从红楼回望首义之城", description: "纪念馆与首义广场相邻，可结合周边遗址了解武昌起义与近代武汉城市历史。", longitude: 114.3065, latitude: 30.5392, district: "武昌区", address: "武珞路1号", categoryId: "culture", featured: false },
+  { id: "wuhan-art-museum", slug: "wuhan-art-museum", name: "武汉美术馆（汉口馆）", subtitle: "老金融建筑里的当代展览", description: "位于汉口历史风貌区，适合与江汉路、保华街和黎黄陂路安排为一条步行路线。", longitude: 114.2899, latitude: 30.5886, district: "江岸区", address: "中山大道保华街2号", categoryId: "culture", featured: false },
+  { id: "baotong-temple", slug: "baotong-temple", name: "宝通禅寺", subtitle: "洪山脚下的古寺与塔影", description: "寺院依洪山而建，山门、殿宇和洪山宝塔形成由城市道路逐渐进入山林的空间层次。", longitude: 114.3318, latitude: 30.5268, district: "武昌区", address: "武珞路549号", categoryId: "culture", featured: false },
+  { id: "jiefang-park", slug: "jiefang-park", name: "解放公园", subtitle: "汉口老城区的大尺度绿荫", description: "林荫、湖面和季节花木构成稳定的城市公园体验，适合散步、慢跑和观察本地日常。", longitude: 114.2987, latitude: 30.6194, district: "江岸区", address: "解放大道1861号", categoryId: "nature", featured: false },
+  { id: "zhongshan-park", slug: "zhongshan-park", name: "中山公园", subtitle: "闹市中央的老牌公园", description: "从解放大道进入，很快就能从商业街区切换到湖面、树荫与游园空间。", longitude: 114.2729, latitude: 30.5805, district: "江汉区", address: "解放大道1265号", categoryId: "nature", featured: false },
+  { id: "moshan-scenic-area", slug: "moshan-scenic-area", name: "东湖磨山", subtitle: "从楚城到山林湖岸", description: "磨山连接植物园、东湖绿道与多处观景空间，适合安排半日徒步或与骑行线路组合。", longitude: 114.4138, latitude: 30.5487, district: "武昌区", address: "沿湖大道58号", categoryId: "nature", featured: true },
+  { id: "lihuangpi-road", slug: "lihuangpi-road", name: "黎黄陂路", subtitle: "把汉口旧租界读成一条街", description: "街道及周边分布多座历史建筑，适合从沿江大道向中山大道慢慢步行观察。", longitude: 114.3017, latitude: 30.5987, district: "江岸区", address: "黎黄陂路", categoryId: "neighborhood", featured: true },
+  { id: "wansongyuan", slug: "wansongyuan", name: "万松园", subtitle: "从晚饭热闹到深夜的街区", description: "餐馆、小店和居民生活高密度交织，是体验汉口夜间烟火气的代表性片区。", longitude: 114.2725, latitude: 30.5905, district: "江汉区", address: "雪松路与万松园路一带", categoryId: "neighborhood", featured: false },
+  { id: "liangdao-street", slug: "liangdao-street", name: "粮道街", subtitle: "从过早摊走进老武昌", description: "适合清晨从小东门方向一路边吃边走，并继续串联昙华林、胭脂路与得胜桥。", longitude: 114.3165, latitude: 30.5494, district: "武昌区", address: "粮道街", categoryId: "neighborhood", featured: true },
+  { id: "hust", slug: "hust", name: "华中科技大学", subtitle: "森林感与工程气质并存的校园", description: "校园轴线长、绿化密度高，主校区与周边光谷生活共同组成武汉高校片区的重要一站。", longitude: 114.4146, latitude: 30.5159, district: "洪山区", address: "珞喻路1037号", categoryId: "campus", featured: false },
+  { id: "ccnu", slug: "ccnu", name: "华中师范大学", subtitle: "桂子山上的百年学府", description: "校园依桂子山展开，适合从珞喻路进入，观察山地校园与城市主干道之间的空间变化。", longitude: 114.356, latitude: 30.5182, district: "洪山区", address: "珞喻路152号", categoryId: "campus", featured: false },
+  { id: "hubei-university", slug: "hubei-university", name: "湖北大学", subtitle: "沙湖岸边的城市校园", description: "校园靠近沙湖与武昌滨江片区，可与沙湖公园、友谊大道安排在同一条城市漫步线上。", longitude: 114.3395, latitude: 30.5835, district: "武昌区", address: "友谊大道368号", categoryId: "campus", featured: false },
+  { id: "hubu-alley", slug: "hubu-alley", name: "户部巷", subtitle: "黄鹤楼脚下的武汉小吃街", description: "游客密度较高但位置经典，适合与长江大桥、中华路码头和黄鹤楼一起安排。", longitude: 114.3, latitude: 30.5428, district: "武昌区", address: "自由路与户部巷", categoryId: "food", featured: false },
+  { id: "jiqing-street", slug: "jiqing-street", name: "吉庆街", subtitle: "汉口夜色里的市井餐桌", description: "从大智路一带进入，可以把老街餐饮与中山大道、江汉路夜游串联起来。", longitude: 114.291, latitude: 30.595, district: "江岸区", address: "吉庆街", categoryId: "food", featured: false },
 ];
 
 type DefaultPlaceMedia = Pick<Place, "imageUrl" | "imageCredit" | "imageSourceUrl">;
@@ -279,6 +295,16 @@ const defaultPlaceMedia: Partial<Record<string, DefaultPlaceMedia>> = {
     imageUrl: "/places/guiyuan-temple.jpg",
     imageCredit: "Gary Todd · CC0",
     imageSourceUrl: "https://commons.wikimedia.org/wiki/File:Guiyuan_Temple,_Wuhan_(10160025996).jpg",
+  },
+  "wuhan-yangtze-bridge": {
+    imageUrl: "https://commons.wikimedia.org/wiki/Special:Redirect/file/Wuhan%20Yangtze%20River%20Bridge%20in%202020.jpg?width=1280",
+    imageCredit: "Zheng Zhou · CC BY-SA 4.0",
+    imageSourceUrl: "https://commons.wikimedia.org/wiki/File:Wuhan_Yangtze_River_Bridge_in_2020.jpg",
+  },
+  "jianghanguan-museum": {
+    imageUrl: "https://commons.wikimedia.org/wiki/Special:Redirect/file/China%20Wuhan%20Jianghanguan.jpg?width=1280",
+    imageCredit: "Mongol · CC BY-SA 3.0",
+    imageSourceUrl: "https://commons.wikimedia.org/wiki/File:China_Wuhan_Jianghanguan.jpg",
   },
 };
 

@@ -37,7 +37,7 @@ type ActivityRow = {
   completed_at: string | null; cancelled_at: string | null;
   image_key: string | null;
   creator_id: string; username: string; display_name: string; avatar_color: string;
-  joined_count: number; joined_by_me: number;
+  joined_count: number; joined_by_me: number; comment_count: number;
 };
 
 function mapActivityRow(row: ActivityRow, user: CommunityUser | null): CityActivity {
@@ -51,6 +51,7 @@ function mapActivityRow(row: ActivityRow, user: CommunityUser | null): CityActiv
     imageUrl: row.image_key ? `/media/${row.image_key}` : null,
     creator: { id: row.creator_id, username: row.username, displayName: row.display_name, avatarColor: row.avatar_color },
     joinedCount: Number(row.joined_count), joinedByMe: Number(row.joined_by_me) > 0, isOwner: user?.id === row.creator_id,
+    commentCount: Number(row.comment_count),
   };
 }
 
@@ -59,13 +60,15 @@ const activitySelect = `SELECT a.id, a.activity_type, a.route_id, r.name AS rout
   a.meeting_name, a.meeting_longitude, a.meeting_latitude, a.capacity, a.pace, a.status,
   a.completed_at, a.cancelled_at, a.image_key, u.id AS creator_id, u.username, u.display_name, u.avatar_color,
   (SELECT COUNT(*) FROM activity_members m WHERE m.activity_id = a.id) AS joined_count,
-  (SELECT COUNT(*) FROM activity_members m WHERE m.activity_id = a.id AND m.user_id = ?) AS joined_by_me
+  (SELECT COUNT(*) FROM activity_members m WHERE m.activity_id = a.id AND m.user_id = ?) AS joined_by_me,
+  (SELECT COUNT(*) FROM activity_comments c WHERE c.activity_id = a.id AND c.status = 'published') AS comment_count
  FROM activities a JOIN users u ON u.id = a.creator_id LEFT JOIN cycling_routes r ON r.id = a.route_id`;
 
 export async function listActivities(db: D1Database, user: CommunityUser | null): Promise<CityActivity[]> {
   const rows = await db.prepare(
     `${activitySelect}
      WHERE a.status = 'open'
+       AND a.moderation_status = 'visible'
        AND datetime(COALESCE(a.ends_at, datetime(a.starts_at, '+2 hours'))) > datetime('now')
      ORDER BY datetime(a.starts_at) ASC LIMIT 50`,
   ).bind(user?.id ?? "").all<ActivityRow>();
@@ -80,7 +83,8 @@ export async function listMyActivities(db: D1Database, user: CommunityUser): Pro
       a.completed_at, a.cancelled_at, a.image_key,
       u.id AS creator_id, u.username, u.display_name, u.avatar_color,
       (SELECT COUNT(*) FROM activity_members m WHERE m.activity_id = a.id) AS joined_count,
-      (SELECT COUNT(*) FROM activity_members m WHERE m.activity_id = a.id AND m.user_id = ?) AS joined_by_me
+      (SELECT COUNT(*) FROM activity_members m WHERE m.activity_id = a.id AND m.user_id = ?) AS joined_by_me,
+      (SELECT COUNT(*) FROM activity_comments c WHERE c.activity_id = a.id AND c.status = 'published') AS comment_count
      FROM activities a JOIN users u ON u.id = a.creator_id LEFT JOIN cycling_routes r ON r.id = a.route_id
      WHERE a.creator_id = ? OR EXISTS (
        SELECT 1 FROM activity_members mine WHERE mine.activity_id = a.id AND mine.user_id = ?

@@ -17,6 +17,9 @@ export async function POST(request: NextRequest, context: RouteContext<"/api/act
      AND (SELECT COUNT(*) FROM activity_members m WHERE m.activity_id = a.id) < a.capacity`,
   ).bind(user.id, id).run();
   if (!result.meta.changes) return NextResponse.json({ error: "活动已开始、已满员，或你已经加入" }, { status: 409 });
+  await env.DB.prepare(`INSERT INTO user_notifications (id, user_id, activity_id, type, title, body)
+    SELECT ?, creator_id, id, 'activity_joined', '有新成员加入', ? FROM activities WHERE id = ? AND creator_id != ?`)
+    .bind(crypto.randomUUID(), `${user.displayName} 加入了你的活动。`, id, user.id).run();
   return NextResponse.json({ joined: true });
 }
 

@@ -2,7 +2,7 @@ import { getCloudflareContext } from "@opennextjs/cloudflare";
 import { NextResponse, type NextRequest } from "next/server";
 import { isSameOrigin } from "@/lib/admin-auth";
 import { readJsonBody } from "@/lib/http";
-import { newSession, passwordFingerprint, requestIp, USER_COOKIE_NAME, userCookieOptions } from "@/lib/user-auth";
+import { hashPassword, newSession, requestIp, USER_COOKIE_NAME, userCookieOptions } from "@/lib/user-auth";
 
 export const dynamic = "force-dynamic";
 const colors = ["#d8ff3e", "#53d9ff", "#ff6b4a", "#d38cff", "#ffcf4a"];
@@ -23,11 +23,14 @@ export async function POST(request: NextRequest) {
 
   const id = crypto.randomUUID();
   const session = await newSession();
-  const passwordHash = await passwordFingerprint(username, password, env.USER_AUTH_SECRET);
+  const passwordRecord = await hashPassword(password, env.USER_AUTH_SECRET);
   const color = colors[username.split("").reduce((sum, value) => sum + value.charCodeAt(0), 0) % colors.length];
   try {
     await env.DB.batch([
-      env.DB.prepare("INSERT INTO users (id, username, display_name, password_hash, avatar_color) VALUES (?, ?, ?, ?, ?)").bind(id, username, displayName, passwordHash, color),
+      env.DB.prepare(`INSERT INTO users
+        (id, username, display_name, password_hash, password_salt, password_iterations, avatar_color)
+        VALUES (?, ?, ?, ?, ?, ?, ?)`)
+        .bind(id, username, displayName, passwordRecord.passwordHash, passwordRecord.passwordSalt, passwordRecord.passwordIterations, color),
       env.DB.prepare("INSERT INTO user_sessions (token_hash, user_id, expires_at) VALUES (?, ?, ?)").bind(session.tokenHash, id, session.expiresAt),
     ]);
   } catch (error) {
