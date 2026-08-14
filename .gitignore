@@ -19,6 +19,7 @@
 /.open-next/
 /.wrangler/
 /.playwright-cli/
+/output/
 
 # production
 /build

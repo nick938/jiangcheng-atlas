@@ -24,17 +24,23 @@ button, input, select, textarea { font: inherit; }
 button { color: inherit; }
 button:focus-visible, input:focus-visible { outline: 3px solid rgba(69, 196, 134, 0.48); outline-offset: 2px; }
 
-.atlas-shell { position: fixed; inset: 0; overflow: hidden; background: #dfe8df; }
+.atlas-shell { position: fixed; inset: 0; overflow: hidden; background: #0e1514; }
 .atlas-map { position: absolute; inset: 0; }
 .map-wash {
   position: absolute;
   inset: 0;
   pointer-events: none;
   background:
-    radial-gradient(circle at 50% 52%, transparent 48%, rgba(24, 51, 47, 0.08) 100%),
-    linear-gradient(180deg, rgba(244, 240, 230, 0.2), transparent 18%);
-  mix-blend-mode: multiply;
+    radial-gradient(circle at 50% 48%, transparent 30%, rgba(3, 9, 8, .4) 100%),
+    linear-gradient(180deg, rgba(6, 15, 13, .18), transparent 22%);
+  mix-blend-mode: normal;
 }
+.mission-focus-shade { position: absolute; z-index: 10; inset: 0; visibility: hidden; opacity: 0; pointer-events: none; background: radial-gradient(circle at 50% 50%, transparent 0, rgba(3,9,8,.12) 32%, rgba(3,9,8,.64) 100%); }
+.mission-create-mode { position: absolute; z-index: 17; left: 50%; bottom: 26px; display: grid; min-width: 260px; padding: 11px 16px; border: 1px solid rgba(216,255,62,.32); border-radius: 10px; background: rgba(8,17,15,.82); color: #fff; text-align: center; transform: translateX(-50%); box-shadow: 0 12px 34px rgba(0,0,0,.3); backdrop-filter: blur(14px); pointer-events: none; }
+.mission-create-mode span { color: #d8ff3e; font: 800 .75rem/1 var(--font-latin); letter-spacing: .16em; }
+.mission-create-mode b { margin-top: 6px; font-size: .9375rem; }
+.creating-mission .atlas-map canvas { cursor: crosshair !important; }
+.creating-mission .map-wash { background: linear-gradient(180deg, rgba(4,12,10,.25), rgba(4,12,10,.05)); }
 
 .atlas-header {
   position: absolute;
@@ -106,6 +112,14 @@ button:focus-visible, input:focus-visible { outline: 3px solid rgba(69, 196, 134
 .account-menu button em { display: grid; min-width: 22px; height: 22px; padding: 0 5px; place-items: center; border-radius: 99px; background: rgba(24,51,47,.08); color: #61726d; font: 750 .8125rem/1 var(--font-latin); font-style: normal; }
 .account-menu button.account-logout { color: #9a4a3e; }
 .account-menu button:disabled { opacity: .55; cursor: wait; }
+.mission-map .brand, .mission-map .header-actions { border-color: rgba(255,255,255,.1); background: rgba(8,17,15,.8); color: #eef3f1; box-shadow: 0 12px 36px rgba(0,0,0,.24); }
+.mission-map .brand small, .mission-map .account-trigger small { color: #72817c; }
+.mission-map .account-trigger { color: #d8e0dd; }
+.mission-map .account-login { background: rgba(255,255,255,.06); color: #dbe3e0; }
+.mission-map .account-login:hover { background: rgba(255,255,255,.12); color: #fff; }
+.mission-map .create-event-link { background: #d8ff3e; color: #16201d; }
+.mission-map .create-event-link span { background: #16201d; color: #d8ff3e; }
+.mission-map .create-event-link:hover { background: #e4ff76; }
 
 .legend-explorer {
   position: absolute;
@@ -117,72 +131,49 @@ button:focus-visible, input:focus-visible { outline: 3px solid rgba(69, 196, 134
   gap: 10px;
   pointer-events: none;
 }
-.legend-rail {
-  width: 62px;
-  display: grid;
-  gap: 6px;
-  padding: 0;
-  border: 0;
-  background: transparent;
-  pointer-events: auto;
-}
-.legend-rail button {
-  position: relative;
-  width: 100%;
-  display: grid;
-  justify-items: center;
-  gap: 3px;
-  margin: 0;
-  padding: 6px 2px 5px;
-  border: 1px solid var(--glass-border);
-  border-radius: 14px;
-  background: var(--glass-soft);
-  box-shadow: 0 7px 22px rgba(21,46,41,.1);
-  -webkit-backdrop-filter: var(--glass-filter);
-  backdrop-filter: var(--glass-filter);
-  cursor: pointer;
-  transition: background 160ms ease, transform 160ms ease;
-}
-.legend-rail button:hover { background: rgba(255,255,255,.72); transform: translateY(-1px); }
-.legend-rail button.active { border-color: rgba(255,255,255,.28); background: rgba(17,55,49,.88); color: #fff; }
-.legend-rail button i {
-  display: grid;
-  width: 31px;
-  height: 31px;
-  place-items: center;
-  color: var(--legend-color);
-  font-size: .9375rem;
-  font-style: normal;
-  font-weight: 850;
-}
-.legend-rail button i svg { width: 17px; height: 17px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.legend-launcher { width: 150px; min-height: 58px; display: grid; grid-template-columns: 38px minmax(0,1fr) auto; align-items: center; gap: 9px; padding: 8px 10px; border: 1px solid rgba(216,255,62,.22); border-radius: 13px; background: rgba(8,17,15,.82); color: #fff; box-shadow: 0 12px 34px rgba(0,0,0,.26); backdrop-filter: blur(18px) saturate(1.2); pointer-events: auto; cursor: pointer; transition: border-color 180ms ease, transform 180ms ease, background 180ms ease; }
+.legend-launcher:hover, .legend-explorer.open .legend-launcher { border-color: rgba(216,255,62,.64); background: rgba(10,23,20,.94); transform: translateY(-1px); }
+.legend-launcher > i { display: grid; width: 38px; height: 38px; place-items: center; color: var(--legend-color); }
+.legend-launcher > i svg { width: 24px; height: 24px; }
+.legend-launcher > span { min-width: 0; text-align: left; }
+.legend-launcher small, .legend-launcher strong { display: block; }
+.legend-launcher small { margin-bottom: 4px; color: #82908b; font: 700 .6875rem/1 var(--font-latin); letter-spacing: .14em; }
+.legend-launcher strong { font-size: 1rem; }
+.legend-launcher > em { display: grid; min-width: 25px; height: 25px; padding: 0 6px; place-items: center; border-radius: 99px; background: #d8ff3e; color: #121c19; font: 850 .8125rem/1 var(--font-latin); font-style: normal; }
 .pictogram-outline { fill: none; stroke: #101816; stroke-width: 5; stroke-linecap: round; stroke-linejoin: round; }
 .pictogram-color { fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
-.legend-rail button span { font-size: .8125rem; font-weight: 750; }
-.legend-rail button em { position: absolute; top: 3px; right: 2px; min-width: 15px; height: 15px; padding: 0 3px; border: 1px solid rgba(255,255,255,.8); border-radius: 99px; background: rgba(255,253,248,.82); color: #65736f; font: 700 .75rem/1.2 var(--font-latin); font-style: normal; }
 
 .legend-list-panel {
-  width: min(340px, calc(100vw - 112px));
+  width: min(360px, calc(100vw - 190px));
   max-height: min(620px, calc(100vh - 118px));
   display: flex;
   flex-direction: column;
   overflow: hidden;
-  border: 1px solid rgba(255, 255, 255, .76);
-  border-radius: 18px;
-  background: var(--glass-strong);
-  box-shadow: 0 16px 44px rgba(21, 46, 41, .18);
-  -webkit-backdrop-filter: blur(26px) saturate(1.4);
-  backdrop-filter: blur(26px) saturate(1.4);
+  border: 1px solid rgba(216,255,62,.16);
+  border-radius: 14px;
+  background: rgba(8,17,15,.9);
+  color: #e9efec;
+  box-shadow: 0 18px 52px rgba(0,0,0,.34);
+  -webkit-backdrop-filter: blur(24px) saturate(1.2);
+  backdrop-filter: blur(24px) saturate(1.2);
   pointer-events: auto;
   animation: legend-list-in 220ms cubic-bezier(.2, .85, .2, 1) both;
 }
 @keyframes legend-list-in { from { opacity: 0; transform: translateX(-8px) scale(.98); } }
-.legend-list-panel > header { position: relative; display: flex; align-items: center; gap: 12px; padding: 15px 16px 12px; border-bottom: 1px solid var(--line); }
+.legend-list-panel > header { position: relative; display: flex; align-items: center; gap: 12px; padding: 15px 16px 12px; border-bottom: 1px solid rgba(255,255,255,.08); }
 .legend-list-panel header div { flex: 1; }
 .legend-list-panel header span { display: block; margin-bottom: 5px; color: #a35f41; font: 700 .75rem/1 var(--font-latin); letter-spacing: .14em; }
 .legend-list-panel header h2 { margin: 0; font-size: 1.5rem; letter-spacing: -.03em; }
-.legend-list-panel header > b { color: #98a19e; font: 650 1.25rem/1 var(--font-latin); }
-.legend-list-panel header button { width: 28px; height: 28px; padding: 0; border: 1px solid var(--line); border-radius: 50%; background: #f1ede4; color: #62706c; font-size: 1.375rem; cursor: pointer; }
+.legend-list-panel header > b { color: #d8ff3e; font: 650 1.25rem/1 var(--font-latin); }
+.legend-list-panel header button { width: 28px; height: 28px; padding: 0; border: 1px solid rgba(255,255,255,.12); border-radius: 50%; background: rgba(255,255,255,.06); color: #b6c1bd; font-size: 1.375rem; cursor: pointer; }
+.legend-category-grid { display: grid; grid-template-columns: repeat(4,1fr); gap: 6px; padding: 10px; border-bottom: 1px solid rgba(255,255,255,.08); }
+.legend-category-grid button { position: relative; min-width: 0; display: grid; justify-items: center; gap: 4px; padding: 7px 2px 6px; border: 1px solid transparent; border-radius: 9px; background: rgba(255,255,255,.035); color: #8f9c97; cursor: pointer; }
+.legend-category-grid button:hover { background: rgba(255,255,255,.08); color: #fff; }
+.legend-category-grid button.active { border-color: color-mix(in srgb, var(--legend-color) 70%, transparent); background: rgba(255,255,255,.09); color: var(--legend-color); }
+.legend-category-grid i { display: grid; width: 25px; height: 25px; place-items: center; color: var(--legend-color); }
+.legend-category-grid svg { width: 17px; height: 17px; }
+.legend-category-grid span { color: currentColor; font-size: .75rem; font-weight: 750; }
+.legend-category-grid em { position: absolute; top: 3px; right: 4px; color: #7e8b86; font: 700 .625rem/1 var(--font-latin); font-style: normal; }
 .legend-result-list { min-height: 0; overflow-y: auto; padding: 7px; scrollbar-color: #c9cec9 transparent; scrollbar-width: thin; }
 .legend-result-list > button {
   width: 100%;
@@ -198,8 +189,9 @@ button:focus-visible, input:focus-visible { outline: 3px solid rgba(69, 196, 134
   cursor: pointer;
   transition: background 150ms ease, transform 150ms ease;
 }
-.legend-result-list > button:hover { background: #f0ece3; transform: translateX(2px); }
-.legend-result-list > button.selected { background: var(--ink); color: #fff; }
+.legend-result-list > button { color: #d7dfdc; }
+.legend-result-list > button:hover { background: rgba(255,255,255,.065); transform: translateX(2px); }
+.legend-result-list > button.selected { background: rgba(216,255,62,.12); color: #fff; }
 .legend-result-list > button i { display: grid; width: 36px; height: 36px; place-items: center; color: var(--item-color); font-size: .9375rem; font-style: normal; font-weight: 850; }
 .legend-result-list > button i svg { width: 19px; height: 19px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
 .legend-result-list > button.event-row i { color: var(--item-color); }
@@ -207,9 +199,13 @@ button:focus-visible, input:focus-visible { outline: 3px solid rgba(69, 196, 134
 .legend-result-list > button span { min-width: 0; }
 .legend-result-list > button strong, .legend-result-list > button small { display: block; }
 .legend-result-list > button strong { margin-bottom: 3px; overflow: hidden; font-size: 1rem; white-space: nowrap; text-overflow: ellipsis; }
-.legend-result-list > button small { overflow: hidden; color: #7d8985; font-size: .8125rem; white-space: nowrap; text-overflow: ellipsis; }
+.legend-result-list > button small { overflow: hidden; color: #7f8d88; font-size: .8125rem; white-space: nowrap; text-overflow: ellipsis; }
 .legend-result-list > button.selected small { color: rgba(255,255,255,.64); }
 .legend-result-list > button em { font-size: 1.0625rem; font-style: normal; opacity: .58; }
+.legend-empty-state { display: grid; justify-items: center; padding: 32px 18px; text-align: center; }
+.legend-empty-state b { font-size: 1.0625rem; }
+.legend-empty-state span { max-width: 240px; margin-top: 7px; color: #82908b; font-size: .8125rem; line-height: 1.55; }
+.legend-empty-state button { margin-top: 16px; padding: 9px 13px; border: 0; border-radius: 8px; background: #d8ff3e; color: #17211e; font-size: .8125rem; font-weight: 850; cursor: pointer; }
 
 .place-detail {
   position: absolute;
@@ -279,6 +275,19 @@ button:focus-visible, input:focus-visible { outline: 3px solid rgba(69, 196, 134
 .mission-visual b { z-index: 1; font: 800 2.75rem/1 var(--font-latin); }
 .mission-visual b svg { width: 40px; height: 40px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
 .mission-visual small { position: absolute; right: 14px; bottom: 10px; font-size: .8125rem; opacity: .72; }
+.event-detail { animation: none; border-color: rgba(216,255,62,.2); background: rgba(8,17,15,.93); color: #edf2f0; box-shadow: 0 24px 78px rgba(0,0,0,.42); }
+.event-detail::after { border-color: rgba(216,255,62,.18); background: rgba(8,17,15,.93); }
+.event-detail .detail-tags span { background: rgba(255,255,255,.07); color: #aeb9b5; }
+.event-detail .detail-body h3 { color: #d8ff3e; }
+.event-detail .detail-body > p { color: #9ba8a3; }
+.event-detail .event-facts span, .event-detail .event-navigation a, .event-detail .event-navigation button, .event-detail .activity-comments article, .event-detail .activity-comments > p { border-color: rgba(255,255,255,.09); background: rgba(255,255,255,.045); color: #dbe3e0; }
+.event-detail .event-facts small, .event-detail .event-owner small, .event-detail .activity-comments article time { color: #778681; }
+.event-detail .activity-discussion { border-color: rgba(255,255,255,.08); }
+.event-detail .activity-comment-form textarea, .event-detail .activity-report-form textarea, .event-detail .activity-report-form select { border-color: rgba(255,255,255,.1); background: rgba(255,255,255,.05); color: #edf2f0; }
+.mission-radar-marker { position: relative; width: 34px; height: 34px; display: grid; place-items: center; pointer-events: none; will-change: transform, opacity; }
+.mission-radar-marker > i { position: absolute; inset: 3px; border: 1.5px solid #d8ff3e; border-radius: 50%; box-shadow: 0 0 18px rgba(216,255,62,.34); }
+.mission-radar-marker > span { position: relative; width: 22px; height: 22px; border: 3px solid #0b1311; border-radius: 50%; background: #d8ff3e; box-shadow: 0 0 0 2px rgba(216,255,62,.7), 0 0 22px rgba(216,255,62,.72); }
+.mission-radar-marker > span::before { content: ""; position: absolute; inset: 5px; border-radius: 50%; background: #13201c; }
 .mission-cta { display: grid; place-items: center; text-decoration: none; }
 .event-facts { display: grid; grid-template-columns: 1.25fr .75fr; gap: 7px; margin: 10px 0; }
 .event-facts span { padding: 9px 10px; border: 1px solid var(--line); border-radius: 10px; background: #f5f1e9; color: #304743; font-size: .875rem; font-weight: 700; }
@@ -294,7 +303,7 @@ button:focus-visible, input:focus-visible { outline: 3px solid rgba(69, 196, 134
 .event-owner-actions button, .my-activity-actions button { height: 38px; border: 0; border-radius: 10px; background: var(--ink); color: #fff; font-size: .875rem; font-weight: 750; cursor: pointer; }
 .event-owner-actions button.danger, .my-activity-actions button.danger { background: #f0e7e1; color: #994e3f; }
 .event-owner-actions button:disabled, .my-activity-actions button:disabled { opacity: .5; cursor: wait; }
-.event-detail .detail-body { max-height: min(64vh, 650px); overflow-y: auto; scrollbar-width: thin; }
+.event-detail .detail-body { max-height: min(52vh, 560px); overflow-y: auto; scrollbar-width: thin; }
 .activity-discussion { margin-top: 14px; padding-top: 13px; border-top: 1px solid var(--line); }
 .activity-discussion > header { display: flex; align-items: center; justify-content: space-between; }
 .activity-discussion > header small, .activity-discussion > header strong { display: block; }
@@ -505,19 +514,20 @@ button:focus-visible, input:focus-visible { outline: 3px solid rgba(69, 196, 134
   .brand strong { font-size: 1.25rem; }
   .brand small { font-size: .75rem; }
   .mission-link { padding:8px 7px; font-size: .8125rem; }
+  .create-event-link { width: 40px; justify-content: center; padding: 0; font-size: 0; }
+  .create-event-link span { font-size: .8125rem; }
   .account-login { padding: 8px 7px; }
   .account-trigger { padding-right: 5px; }
   .account-trigger > span { max-width: 54px; }
   .account-trigger small { display: none; }
   .account-menu { top: calc(100% + 11px); width: 210px; }
-  .legend-explorer { top: 76px; left: 10px; gap: 7px; }
-  .legend-rail { width: 54px; gap: 5px; padding: 0; }
-  .legend-rail button { margin: 0; padding: 4px 1px; }
-  .legend-rail button i { width: 28px; height: 28px; border-radius: 9px; }
-  .legend-rail button span { font-size: .75rem; }
-  .legend-rail button em { top: 1px; right: 0; }
-  .legend-list-panel { width: calc(100vw - 81px); max-height: calc(100vh - 86px); border-radius: 15px; }
+  .legend-explorer { top: 76px; left: 10px; flex-direction: column; gap: 7px; }
+  .legend-launcher { width: 138px; min-height: 52px; grid-template-columns: 32px minmax(0,1fr) auto; padding: 7px 8px; }
+  .legend-launcher > i { width: 32px; height: 32px; }
+  .legend-launcher > i svg { width: 21px; height: 21px; }
+  .legend-list-panel { width: calc(100vw - 20px); max-height: calc(100vh - 142px); border-radius: 12px; }
   .legend-list-panel > header { padding: 12px 13px 10px; }
+  .legend-category-grid { grid-template-columns: repeat(4,1fr); padding: 8px; }
   .legend-result-list > button { grid-template-columns: 34px minmax(0, 1fr) 14px; padding: 7px; }
   .legend-result-list > button i { width: 32px; height: 32px; }
   .place-detail { z-index: 25; width: min(340px, calc(100vw - 20px)); }
@@ -536,6 +546,7 @@ button:focus-visible, input:focus-visible { outline: 3px solid rgba(69, 196, 134
   .map-view-switch > span { display: none; }
   .map-view-switch button { height: 32px; padding: 0 8px; }
   .maplibregl-ctrl-bottom-right { right: 8px; bottom: 8px; }
+  .mission-create-mode { bottom: 58px; min-width: min(260px, calc(100vw - 24px)); }
 }
 
 @media (prefers-reduced-motion: reduce) {

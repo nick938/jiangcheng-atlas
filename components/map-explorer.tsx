@@ -1,6 +1,7 @@
 "use client";
 
 import maplibregl, { type GeoJSONSource, type Map as MapLibreMap } from "maplibre-gl";
+import { gsap } from "gsap";
 import { type FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { CommunityAuthModal } from "@/components/community-auth-modal";
 import { MyActivitiesPanel } from "@/components/my-activities-panel";
@@ -70,8 +71,75 @@ const explorerCategories: { id: ExplorerCategory; label: string; color: string }
   { id: "neighborhood", label: "街区", color: categoryMeta.neighborhood.color },
   { id: "campus", label: "高校", color: categoryMeta.campus.color },
   { id: "food", label: "美食", color: categoryMeta.food.color },
-  { id: "event", label: "事件", color: EVENT_COLOR },
+  { id: "event", label: "差事", color: EVENT_COLOR },
 ];
+
+const BASE_LABEL_LAYERS_TO_HIDE = new Set([
+  "road_one_way_arrow",
+  "road_one_way_arrow_opposite",
+  "poi_r20",
+  "poi_r7",
+  "poi_r1",
+  "poi_transit",
+  "highway-name-path",
+  "highway-name-minor",
+  "highway-name-major",
+  "highway-shield-non-us",
+  "highway-shield-us-interstate",
+  "road_shield_us",
+  "airport",
+  "label_other",
+  "label_village",
+  "label_town",
+]);
+
+function applyMissionMapTheme(map: MapLibreMap) {
+  const style = map.getStyle();
+  for (const layer of style.layers ?? []) {
+    if (BASE_LABEL_LAYERS_TO_HIDE.has(layer.id)) {
+      map.setLayoutProperty(layer.id, "visibility", "none");
+      continue;
+    }
+    if (layer.type === "symbol") {
+      if (layer.layout?.["text-field"]) {
+        map.setPaintProperty(layer.id, "text-color", "#b9c3bf");
+        map.setPaintProperty(layer.id, "text-halo-color", "rgba(8, 15, 14, .92)");
+        map.setPaintProperty(layer.id, "text-halo-width", 1.4);
+        map.setPaintProperty(layer.id, "text-opacity", layer.id.startsWith("water_") ? 0.64 : 0.46);
+      }
+      if (layer.layout?.["icon-image"]) map.setPaintProperty(layer.id, "icon-opacity", 0.4);
+    }
+  }
+
+  const colors: Record<string, [string, string | number]> = {
+    background: ["background-color", "#0e1514"],
+    natural_earth: ["raster-opacity", 0.08],
+    park: ["fill-color", "#18251f"],
+    landuse_residential: ["fill-color", "#151c1b"],
+    landcover_wood: ["fill-color", "#17231d"],
+    landcover_grass: ["fill-color", "#1a251f"],
+    landcover_wetland: ["fill-color", "#162522"],
+    landuse_pitch: ["fill-color", "#202824"],
+    landuse_cemetery: ["fill-color", "#19231f"],
+    landuse_hospital: ["fill-color", "#221d1e"],
+    landuse_school: ["fill-color", "#201f1a"],
+    water: ["fill-color", "#173846"],
+    building: ["fill-color", "#29312f"],
+    "building-3d": ["fill-extrusion-color", "#303936"],
+  };
+  for (const [layerId, [property, value]] of Object.entries(colors)) {
+    if (map.getLayer(layerId)) map.setPaintProperty(layerId, property, value);
+  }
+  if (map.getLayer("building-3d")) map.setPaintProperty("building-3d", "fill-extrusion-opacity", 0.42);
+
+  for (const layer of style.layers ?? []) {
+    if (!layer.id.match(/^(tunnel|road|bridge)_/) || layer.type !== "line") continue;
+    const isMajor = /motorway|trunk|primary|secondary/.test(layer.id);
+    const isRail = /rail/.test(layer.id);
+    map.setPaintProperty(layer.id, "line-color", isRail ? "#323b38" : isMajor ? "#606965" : "#343d3a");
+    map.setPaintProperty(layer.id, "line-opacity", isMajor ? 0.56 : 0.25);
+  }
+}
 
 const categoryIconBody: Record<ExplorerCategory, string> = {
   all: '<rect x="4" y="4" width="6" height="6" rx="1"/><rect x="14" y="4" width="6" height="6" rx="1"/><rect x="4" y="14" width="6" height="6" rx="1"/><rect x="14" y="14" width="6" height="6" rx="1"/>',
@@ -250,8 +318,12 @@ async function registerMapIcons(map: MapLibreMap) {
 }
 
 export function MapExplorer({ initialPlaces }: MapExplorerProps) {
+  const shellRef = useRef<HTMLElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<MapLibreMap | null>(null);
+  const missionDetailRef = useRef<HTMLElement>(null);
+  const missionShadeRef = useRef<HTMLDivElement>(null);
+  const missionMarkerRef = useRef<maplibregl.Marker | null>(null);
   const placesRef = useRef(initialPlaces);
   const activitiesRef = useRef<CityActivity[]>([]);
   const createOpenRef = useRef(false);
@@ -263,7 +335,7 @@ export function MapExplorer({ initialPlaces }: MapExplorerProps) {
   const [selectedPlaceId, setSelectedPlaceId] = useState<string | null>(null);
   const [selectedActivityId, setSelectedActivityId] = useState<string | null>(null);
   const [detailPosition, setDetailPosition] = useState<ScreenPosition | null>(null);
-  const [activeCategory, setActiveCategory] = useState<ExplorerCategory>("all");
+  const [activeCategory, setActiveCategory] = useState<ExplorerCategory>("event");
   const [categoryListOpen, setCategoryListOpen] = useState(false);
   const [mapReady, setMapReady] = useState(false);
   const [mapError, setMapError] = useState(false);
@@ -388,6 +460,8 @@ export function MapExplorer({ initialPlaces }: MapExplorerProps) {
     setCreateOpen(false);
     setMyActivitiesOpen(false);
     setAccountMenuOpen(false);
+    setCategoryListOpen(false);
+    setActiveCategory("event");
     const camera = mapViewMode === "3d" ? MAP_3D_CAMERA : MAP_2D_CAMERA;
     mapRef.current?.fitBounds(WUHAN_CORE_BOUNDS, {
       ...camera,
@@ -682,6 +756,7 @@ export function MapExplorer({ initialPlaces }: MapExplorerProps) {
     map.addControl(new maplibregl.AttributionControl({ compact: true }), "bottom-right");
 
     map.on("load", async () => {
+      applyMissionMapTheme(map);
       map.addSource("places", { type: "geojson", data: toPlaceFeatureCollection(placesRef.current) });
       await registerMapIcons(map);
       if (mapRef.current !== map) return;
@@ -727,11 +802,44 @@ export function MapExplorer({ initialPlaces }: MapExplorerProps) {
       map.addSource("activities", {
         type: "geojson",
         data: toActivityFeatureCollection(activitiesRef.current),
+        cluster: true,
+        clusterMaxZoom: 13,
+        clusterRadius: 54,
+      });
+      map.addLayer({
+        id: "event-clusters",
+        type: "circle",
+        source: "activities",
+        filter: ["has", "point_count"],
+        paint: {
+          "circle-color": "rgba(216, 255, 62, .15)",
+          "circle-radius": ["step", ["get", "point_count"], 20, 5, 25, 12, 31],
+          "circle-stroke-color": "#d8ff3e",
+          "circle-stroke-width": 2,
+          "circle-blur": 0.08,
+        },
+      });
+      map.addLayer({
+        id: "event-cluster-count",
+        type: "symbol",
+        source: "activities",
+        filter: ["has", "point_count"],
+        layout: {
+          "text-field": ["get", "point_count_abbreviated"],
+          "text-size": 13,
+          "text-allow-overlap": true,
+        },
+        paint: {
+          "text-color": "#eaff93",
+          "text-halo-color": "#111a18",
+          "text-halo-width": 1.5,
+        },
       });
       map.addLayer({
         id: "event-icons",
         type: "symbol",
         source: "activities",
+        filter: ["!", ["has", "point_count"]],
         layout: {
           "icon-image": "category-event",
           "icon-size": ["interpolate", ["linear"], ["zoom"], 10, 1, 15, 1.38],
@@ -777,7 +885,17 @@ export function MapExplorer({ initialPlaces }: MapExplorerProps) {
         const activity = activitiesRef.current.find((item) => item.id === id);
         if (activity) focusActivity(activity);
       });
-      for (const layer of ["place-icons", "event-icons"]) {
+      map.on("click", "event-clusters", (event) => {
+        const feature = event.features?.[0];
+        const clusterId = Number(feature?.properties?.cluster_id);
+        if (!feature || !Number.isFinite(clusterId) || feature.geometry.type !== "Point") return;
+        const source = map.getSource("activities") as GeoJSONSource;
+        void source.getClusterExpansionZoom(clusterId).then((zoom) => {
+          if (mapRef.current !== map) return;
+          map.easeTo({ center: feature.geometry.coordinates as [number, number], zoom, duration: 650 });
+        });
+      });
+      for (const layer of ["place-icons", "event-icons", "event-clusters"]) {
         map.on("mouseenter", layer, () => {
           if (!createOpenRef.current) map.getCanvas().style.cursor = "pointer";
         });
@@ -816,10 +934,14 @@ export function MapExplorer({ initialPlaces }: MapExplorerProps) {
     const visibleActivities = selectedActivity && !activities.some((activity) => activity.id === selectedActivity.id)
       ? [...activities, selectedActivity]
       : activities;
-    source?.setData(toActivityFeatureCollection(visibleActivities));
+    source?.setData(toActivityFeatureCollection(
+      visibleActivities.filter((activity) => activity.id !== selectedActivity?.id),
+    ));
     const map = mapRef.current;
-    if (map?.getLayer("event-icons")) {
-      map.setLayoutProperty("event-icons", "visibility", categoryHasActivities ? "visible" : "none");
+    for (const layerId of ["event-icons", "event-clusters", "event-cluster-count"]) {
+      if (map?.getLayer(layerId)) {
+        map.setLayoutProperty(layerId, "visibility", categoryHasActivities ? "visible" : "none");
+      }
     }
   }, [activities, categoryHasActivities, mapReady, selectedActivity]);
 
@@ -872,6 +994,103 @@ export function MapExplorer({ initialPlaces }: MapExplorerProps) {
   }, [mapReady, selectedActivity, selectedPlace]);
 
   useEffect(() => {
+    missionMarkerRef.current?.remove();
+    missionMarkerRef.current = null;
+    const map = mapRef.current;
+    if (!map || !mapReady || !selectedActivity) return;
+
+    const markerElement = document.createElement("div");
+    markerElement.className = "mission-radar-marker";
+    markerElement.setAttribute("aria-hidden", "true");
+    markerElement.innerHTML = "<i></i><i></i><span></span>";
+    const marker = new maplibregl.Marker({ element: markerElement, anchor: "center" })
+      .setLngLat([selectedActivity.meetingLongitude, selectedActivity.meetingLatitude])
+      .addTo(map);
+    missionMarkerRef.current = marker;
+
+    const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    const context = gsap.context(() => {
+      gsap.fromTo(markerElement, { scale: 0.4, autoAlpha: 0 }, {
+        scale: 1,
+        autoAlpha: 1,
+        duration: reducedMotion ? 0.01 : 0.48,
+        ease: "back.out(1.8)",
+      });
+      if (!reducedMotion) {
+        gsap.fromTo(markerElement.querySelectorAll("i"), { scale: 0.25, autoAlpha: 0.9 }, {
+          scale: 2.4,
+          autoAlpha: 0,
+          duration: 1.8,
+          stagger: 0.9,
+          repeat: -1,
+          ease: "power1.out",
+        });
+      }
+    }, markerElement);
+
+    return () => {
+      context.revert();
+      marker.remove();
+      if (missionMarkerRef.current === marker) missionMarkerRef.current = null;
+    };
+  }, [mapReady, selectedActivity]);
+
+  useEffect(() => {
+    const detail = missionDetailRef.current;
+    const shade = missionShadeRef.current;
+    if (!selectedActivity || !detail || !shade) {
+      if (shade) gsap.to(shade, { autoAlpha: 0, duration: 0.18, overwrite: true });
+      return;
+    }
+    const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    const context = gsap.context(() => {
+      const timeline = gsap.timeline({ defaults: { ease: "power3.out" } });
+      timeline
+        .to(shade, { autoAlpha: 1, duration: reducedMotion ? 0.01 : 0.35 }, 0)
+        .fromTo(detail, { autoAlpha: 0, y: 30, scale: 0.94 }, {
+          autoAlpha: 1,
+          y: 0,
+          scale: 1,
+          duration: reducedMotion ? 0.01 : 0.56,
+        }, 0.08)
+        .fromTo(detail.querySelectorAll(".mission-visual > *, .detail-tags, .detail-body > h2, .detail-body > h3"), {
+          autoAlpha: 0,
+          y: 12,
+        }, {
+          autoAlpha: 1,
+          y: 0,
+          duration: reducedMotion ? 0.01 : 0.34,
+          stagger: reducedMotion ? 0 : 0.045,
+        }, 0.24);
+    }, shellRef);
+    return () => context.revert();
+  }, [selectedActivity]);
+
+  useEffect(() => {
+    if (!createOpen) return;
+    const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    const context = gsap.context(() => {
+      gsap.fromTo(".create-event-panel", { autoAlpha: 0, x: 42, scale: 0.97 }, {
+        autoAlpha: 1,
+        x: 0,
+        scale: 1,
+        duration: reducedMotion ? 0.01 : 0.48,
+        ease: "power3.out",
+      });
+      if (!reducedMotion) {
+        gsap.fromTo(".mission-create-mode b", { autoAlpha: 0.35 }, {
+          autoAlpha: 1,
+          duration: 0.8,
+          repeat: -1,
+          yoyo: true,
+          ease: "sine.inOut",
+        });
+      }
+    }, shellRef);
+    return () => context.revert();
+  }, [createOpen]);
+
+  useEffect(() => {
     if (!mapReady || selectedActivityId) return;
     const eventId = new URL(window.location.href).searchParams.get("event");
     const shared = activities.find((activity) => activity.id === eventId);
@@ -879,9 +1098,16 @@ export function MapExplorer({ initialPlaces }: MapExplorerProps) {
   }, [activities, focusActivity, mapReady, selectedActivityId]);
 
   return (
-    <main className="atlas-shell">
+    <main ref={shellRef} className={`atlas-shell mission-map ${createOpen ? "creating-mission" : ""}`}>
       <div ref={containerRef} className="atlas-map" aria-label="武汉城市地点与活动互动地图" />
       <div className="map-wash" aria-hidden="true" />
+      <div ref={missionShadeRef} className="mission-focus-shade" aria-hidden="true" />
+      {createOpen && (
+        <div className="mission-create-mode" aria-hidden="true">
+          <span>SELECT RENDEZVOUS</span>
+          <b>在地图上标记集合位置</b>
+        </div>
+      )}
 
       <header className="atlas-header">
         <button className="brand" type="button" onClick={resetCoreView}>
@@ -944,41 +1170,58 @@ export function MapExplorer({ initialPlaces }: MapExplorerProps) {
         </div>
       </header>
 
-      <aside className="legend-explorer" aria-label="地图分类图例">
-        <nav className="legend-rail" aria-label="地图分类">
-          {explorerCategories.map((item) => {
-            const count = item.id === "all"
-              ? places.length + activities.length
-              : item.id === "event"
-                ? activities.length
-                : places.filter((place) => place.categoryId === item.id).length;
-            return (
-              <button
-                key={item.id}
-                type="button"
-                className={activeCategory === item.id ? "active" : ""}
-                onClick={() => chooseCategory(item.id)}
-                aria-pressed={activeCategory === item.id}
-                aria-label={`${item.label}，${count} 个`}
-                title={`${item.label} · ${count}`}
-                style={{ "--legend-color": item.color } as React.CSSProperties}
-              >
-                <i><CategoryPictogram id={item.id} /></i>
-                <span>{item.label}</span>
-                <em>{count}</em>
-              </button>
-            );
-          })}
-        </nav>
+      <aside className={`legend-explorer ${categoryListOpen ? "open" : ""}`} aria-label="地图分类图例">
+        <button
+          type="button"
+          className="legend-launcher"
+          onClick={() => setCategoryListOpen((open) => !open)}
+          aria-expanded={categoryListOpen}
+          aria-controls="map-index-panel"
+          style={{ "--legend-color": activeCategoryMeta.color } as React.CSSProperties}
+        >
+          <i><CategoryPictogram id={activeCategory} /></i>
+          <span><small>MAP MODE</small><strong>{activeCategoryMeta.label}</strong></span>
+          <em>{categoryCount}</em>
+        </button>
 
         {categoryListOpen && (
-          <section className="legend-list-panel" aria-live="polite">
+          <section id="map-index-panel" className="legend-list-panel" aria-live="polite">
             <header>
               <div><span>MAP INDEX</span><h2>{activeCategoryMeta.label}</h2></div>
               <b>{categoryCount.toString().padStart(2, "0")}</b>
               <button type="button" onClick={() => setCategoryListOpen(false)} aria-label="关闭分类列表">×</button>
             </header>
+            <nav className="legend-category-grid" aria-label="切换地图内容">
+              {explorerCategories.map((item) => {
+                const count = item.id === "all"
+                  ? places.length + activities.length
+                  : item.id === "event"
+                    ? activities.length
+                    : places.filter((place) => place.categoryId === item.id).length;
+                return (
+                  <button
+                    key={item.id}
+                    type="button"
+                    className={activeCategory === item.id ? "active" : ""}
+                    onClick={() => chooseCategory(item.id)}
+                    aria-pressed={activeCategory === item.id}
+                    style={{ "--legend-color": item.color } as React.CSSProperties}
+                  >
+                    <i><CategoryPictogram id={item.id} /></i>
+                    <span>{item.label}</span>
+                    <em>{count}</em>
+                  </button>
+                );
+              })}
+            </nav>
             <div className="legend-result-list">
+              {categoryCount === 0 && (
+                <div className="legend-empty-state">
+                  <b>暂时没有公开差事</b>
+                  <span>你可以成为第一个在地图上发起活动的人。</span>
+                  <button type="button" onClick={() => openCreatePanel()}>创建差事 ＋</button>
+                </div>
+              )}
               {categoryActivities.map((activity) => (
                 <button
                   key={activity.id}
@@ -986,7 +1229,7 @@ export function MapExplorer({ initialPlaces }: MapExplorerProps) {
                   className={selectedActivityId === activity.id ? "selected event-row" : "event-row"}
                   onClick={() => {
                     focusActivity(activity);
-                    if (window.matchMedia("(max-width: 760px)").matches) setCategoryListOpen(false);
+                    setCategoryListOpen(false);
                   }}
                   style={{ "--item-color": EVENT_COLOR } as React.CSSProperties}
                 >
@@ -1002,7 +1245,7 @@ export function MapExplorer({ initialPlaces }: MapExplorerProps) {
                   className={selectedPlaceId === place.id ? "selected" : ""}
                   onClick={() => {
                     focusPlace(place);
-                    if (window.matchMedia("(max-width: 760px)").matches) setCategoryListOpen(false);
+                    setCategoryListOpen(false);
                   }}
                   style={{ "--item-color": categoryMeta[place.categoryId].color } as React.CSSProperties}
                 >
@@ -1120,7 +1363,7 @@ export function MapExplorer({ initialPlaces }: MapExplorerProps) {
       )}
 
       {selectedActivity && detailPosition && (
-        <section className="place-detail event-detail" aria-live="polite" style={{ left: detailPosition.x, top: detailPosition.y }}>
+        <section ref={missionDetailRef} className="place-detail event-detail" aria-live="polite" style={{ left: detailPosition.x, top: detailPosition.y }}>
           <button className="detail-close" type="button" onClick={clearSelection} aria-label="关闭差事详情">×</button>
           <div
             className={`mission-visual ${selectedActivity.imageUrl ? "has-image" : ""}`}
