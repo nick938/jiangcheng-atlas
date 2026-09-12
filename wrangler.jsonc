@@ -1,7 +1,12 @@
 {
   "$schema": "./node_modules/wrangler/config-schema.json",
   "name": "jiangcheng-atlas",
+  "account_id": "92b495890da98068a5b5f4c3703fe2fb",
   "main": ".open-next/worker.js",
+  "workers_dev": true,
+  "routes": [
+    { "pattern": "atlas.sololeveling.top", "custom_domain": true }
+  ],
   "compatibility_date": "2026-07-17",
   "compatibility_flags": ["nodejs_compat"],
   "assets": {

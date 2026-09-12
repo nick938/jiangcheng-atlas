@@ -15,8 +15,8 @@ bun run deploy
 涉及新数据库字段时必须先迁移 D1，再部署读取这些字段的 Worker。部署后检查：
 
 ```bash
-curl --fail https://jiangcheng-atlas.liuyi4781.workers.dev/api/health
-curl --fail https://jiangcheng-atlas.liuyi4781.workers.dev/api/activities
+curl --fail https://atlas.sololeveling.top/api/health
+curl --fail https://atlas.sololeveling.top/api/activities
 ```
 
 ## 微信登录
@@ -24,7 +24,7 @@ curl --fail https://jiangcheng-atlas.liuyi4781.workers.dev/api/activities
 微信开放平台网站应用审核通过后，将回调地址配置为：
 
 ```text
-https://你的正式域名/api/auth/wechat/callback
+https://atlas.sololeveling.top/api/auth/wechat/callback
 ```
 
 再设置 Cloudflare Secrets：
