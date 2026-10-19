@@ -88,3 +88,14 @@
   - `fee133c1`：`public/_headers` 给 `/_next/static/*` 加 immutable 强缓存
 - 上线验证：`scripts/smoke.sh` 打生产 **16/16 通过**；`/place/east-lake` 二次请求 `x-nextjs-cache: HIT`；`/media` 条件请求 304；CSP Report-Only / HSTS / nosniff 生效；静态 chunk `cache-control: public, max-age=31536000, immutable`。
 - 回滚：`bunx wrangler versions list` → `bunx wrangler rollback <version-id>`（D1 迁移不回滚，旧版本代码可忽略新表）。
+
+
+## 10. 第三轮：R2 CDN + 通知小遗留 + 业务流程（2026-10-19 晚）
+
+- **R2 图片 CDN 直出**：Cloudflare 自定义域 `media.atlas.sololeveling.top` 绑定 `jiangcheng-atlas-media`；`lib/media.ts` 统一生成 URL，`wrangler.jsonc` 的 `vars.MEDIA_PUBLIC_BASE` 提供生产基地址，本地在 `.dev.vars` 覆盖为空串走 `/media` 回退。生产验证：CDN 200 / `image/jpeg` / `immutable`、第二次 `cf-cache-status: HIT`；活动页 HTML 已输出 CDN 绝对地址；CSP `img-src` 已放行该域。
+- **通知小遗留**：migration `0013` 增加 `post_id` + 去重索引；`insertNotificationIfNotRecent` 统一入口（join 10 分钟、活动/帖子评论 5 分钟冷却）；消息中心可跳转 `/post/<id>`；详情卡改为「优先上方、空间不足翻到下方」并保持视口夹取。本地 API E2E 61/61（含"3 条评论只留 1 条通知且 postId 正确"）。
+- **修复两个集成级问题**：
+  1. `/post/[id]` 在加入 ISR（`generateStaticParams`）后，因页面内 `headers()`（会话判定）与静态生成冲突，生产构建下 500 → 改回 `force-dynamic`；
+  2. `app/page.tsx` 引入 maplibre-gl.css 后 `.maplibregl-map{position:relative}` 压过 `.atlas-map`，地图容器高度塌陷为 0（canvas 退成 500×300）→ 选择器改为 `.atlas-shell .atlas-map`，并在浏览器 E2E 增加"容器铺满视口 + 样式 attribution 出现"断言。
+- **业务流程文档**：新增 `docs/business-flows.md`（235 行，含角色权限、15 张表、11 条路由渲染方式、9 条核心流程、验证矩阵）。
+- **上线版本**：`a7bd9085-2b4c-4ad8-bf52-de85243517c5`；生产冒烟 21/21（含 CDN 校验）、ISR 第二次 `x-nextjs-cache: HIT`、`/api/notifications` 未登录 401、migration 0013 已应用。

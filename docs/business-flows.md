@@ -1,8 +1,8 @@
 # 江城图志 · 业务流程说明（对照当前工作树）
 
 > 事实来源：`app/`、`lib/`、`migrations/`、`scripts/`、`wrangler.jsonc`、`next.config.ts`、`open-next.config.ts`；配套阅读 `OPERATIONS.md`、`docs/community-posts.md`、`VERIFICATION-REPORT.md`、`OPTIMIZATION-AUDIT.md`。
-> 快照时间：2026-10-19。工作树含未提交改动：**R2 图片 CDN 已实现**（`lib/media.ts`）；**通知 postId / 去重冷却、详情卡锚点微调进行中**（见 §6）。
-> 图例：✅ 已有自动化覆盖 ｜ 🧪 需人工确认 ｜ 🚧 进行中，尚未合入。
+> 快照时间：2026-10-19（已随 `a7bd9085` 上线生产）。**R2 图片 CDN 已启用**（`lib/media.ts` + `wrangler.jsonc` vars）；**通知 postId / 去重冷却、详情卡锚点微调已完成**并有 e2e 断言覆盖。
+> 图例：✅ 已有自动化覆盖 ｜ 🧪 需人工确认。
 
 ```
 浏览器 ──HTTPS──▶ Cloudflare 边缘 ──▶ Workers（OpenNext，wrangler.jsonc）
@@ -225,7 +225,7 @@ bash scripts/cloudflare-setup.sh               # 只读预检（默认）
 
 ## 6. 已知边界与待办
 
-1. 🚧 **通知 postId + 去重冷却（进行中）**：工作树已加入 `scripts/e2e-local.mjs` 断言（连续 3 条评论只保留 1 条通知、帖子评论通知带 `postId`）、`components/notifications-panel.tsx` 的 `postId` 跳转、`components/map-explorer.tsx` 的 `onSelectPost` 与详情卡上下翻转定位；但 `lib/community-types.ts` 尚无 `postId` 字段、`migrations/` 未新增列、两个评论接口也无去重 SQL。**合入前**：通知仍按条写入、点击帖子评论通知不跳转、e2e 第 3/7 组相关断言会失败；文档中该能力按「即将可用」理解，以合入后实跑为准。
+1. ✅ **通知 postId + 去重冷却（已完成）**：`migrations/0013_notification_post_id.sql` 增加 `post_id` 与两个去重索引；`lib/notification-repository.ts` 的统一入口 `INSERT ... SELECT ... WHERE NOT EXISTS` 让 join（10 分钟）、活动评论/帖子评论（5 分钟）在冷却窗口内只保留一条；消息中心点击带 `postId` 的通知会跳 `/post/<id>`。`scripts/e2e-local.mjs` 有对应断言（3 条评论 → 1 条通知且 postId 正确）。
 2. 帖子与帖子评论的**举报入口 UI 未做**（`/api/reports` 与治理后台已支持 `post`/`post_comment`）。
 3. 本地 preview **不执行 DO 队列**、Cache API 分支未生效：时间驱动 `revalidate` 与 `caches.default` 需在生产各验证一次。
 4. 失效触发点不全：管理员改地点最多 300s 生效；活动报名/评论/编辑靠 120s（如需即时可在对应接口加 `revalidatePath`）。
