@@ -78,3 +78,13 @@
 - 详情卡 anchor 数学仍按原逻辑（夹取只保证完整可见）；若要"卡片在锚点上方且不遮挡 POI"，需要调整 `flyTo` offset 或做视觉决策。
 - Tailwind v4 仍未移除（0 工具类）；`map-explorer.tsx` 仍未拆分（1600+ 行）；监控告警未落到具体责任人。
 - `revalidate` 采用时间驱动（place 300s / event 120s / post 60s）+ 帖子隐藏/编辑即时 `revalidatePath`；管理员改地点仍最多 5 分钟生效（如需即时可在后台接口加 `revalidatePath`）。
+
+## 9. 生产部署记录（2026-10-19）
+
+- Cloudflare 侧：备份 `backups/20261019T082252Z`；新建 R2 桶 `jiangcheng-atlas-next-cache`；远程迁移 `0011`、`0012` 全部应用；迁移前后行数一致（users=1、activities=1、reports=0、notifications=0）。
+- 部署：`bun run deploy` 两次修正后上线，当前版本 `fee133c1-718e-4077-9a39-938f2c4b34ad`（自定义域 `atlas.sololeveling.top`）。
+  - `b4487fa0`：首次部署（审计修复 + 社区功能）
+  - `4dd27042`：补 `generateStaticParams`，让 `/place`、`/event`、`/post` 真正进入 R2 增量缓存
+  - `fee133c1`：`public/_headers` 给 `/_next/static/*` 加 immutable 强缓存
+- 上线验证：`scripts/smoke.sh` 打生产 **16/16 通过**；`/place/east-lake` 二次请求 `x-nextjs-cache: HIT`；`/media` 条件请求 304；CSP Report-Only / HSTS / nosniff 生效；静态 chunk `cache-control: public, max-age=31536000, immutable`。
+- 回滚：`bunx wrangler versions list` → `bunx wrangler rollback <version-id>`（D1 迁移不回滚，旧版本代码可忽略新表）。
