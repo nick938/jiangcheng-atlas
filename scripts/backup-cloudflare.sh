@@ -59,6 +59,11 @@ printf '枚举 R2 对象键...\n'
 keys_json="$(WRANGLER_LOG_PATH="${wrangler_log}" bunx wrangler d1 execute "${database_name}" --remote --json \
   --command "SELECT object_key AS key FROM place_images WHERE object_key IS NOT NULL UNION SELECT image_key AS key FROM activities WHERE image_key IS NOT NULL")"
 
+# community_posts 是 0011 迁移才引入的：迁移前查询会失败，按“没有帖子图片”处理，
+# 避免首次备份被 set -e 中断。
+posts_keys_json="$(WRANGLER_LOG_PATH="${wrangler_log}" bunx wrangler d1 execute "${database_name}" --remote --json \
+  --command "SELECT image_key AS key FROM community_posts WHERE image_key IS NOT NULL" 2>/dev/null || printf '[]')"
+
 image_count=0
 skipped_count=0
 failed_count=0
@@ -81,7 +86,12 @@ while IFS= read -r object_key; do
     printf '对象下载失败：%s\n' "${object_key}" >&2
     failed_count=$((failed_count + 1))
   fi
-done < <(printf '%s' "${keys_json}" | jq -r '.[].results[]?.key')
+done < <(
+  {
+    printf '%s' "${keys_json}" | jq -r '.[].results[]?.key' 2>/dev/null || true
+    printf '%s' "${posts_keys_json}" | jq -r '.[].results[]?.key' 2>/dev/null || true
+  } | awk 'NF' | sort -u
+)
 
 printf '生成校验和清单...\n'
 (
