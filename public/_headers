@@ -1,0 +1,4 @@
+# Cloudflare Workers 静态资源响应头（OpenNext 会把 public/ 拷贝到 .open-next/assets）
+# 带内容哈希的构建产物可以长期强缓存；HTML 与 API 由 Worker 动态处理，不在此列。
+/_next/static/*
+  Cache-Control: public, max-age=31536000, immutable
