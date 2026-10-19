@@ -4,6 +4,12 @@ on:
   push:
     branches: [main]
   pull_request:
+  workflow_dispatch:
+
+# 同一分支的新推送取消旧运行，避免排队浪费分钟数
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 permissions:
   contents: read
@@ -11,15 +17,44 @@ permissions:
 jobs:
   verify:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
       - uses: oven-sh/setup-bun@v2
         with:
           bun-version: 1.3.6
+      # Bun 官方建议缓存依赖下载目录，键跟随 bun.lock
+      - uses: actions/cache@v4
+        with:
+          path: ~/.bun/install/cache
+          key: ${{ runner.os }}-bun-${{ hashFiles('bun.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-bun-
       - run: bun install --frozen-lockfile
       - run: bun run lint
       - run: bunx next typegen
+      # 先构建：wrangler types 生成的 cloudflare-env.d.ts 会引用 .open-next/worker，
+      # 且 CI 每次都是全新 checkout（.open-next 未跟踪），必须先有构建产物
+      - run: bunx opennextjs-cloudflare build
+      # 绑定漂移检查：wrangler.jsonc 与生成的 cloudflare-env.d.ts 必须保持一致
+      - name: 检查 cloudflare-env.d.ts 是否与 wrangler.jsonc 同步
+        run: |
+          bunx wrangler types --env-interface CloudflareEnv cloudflare-env.d.ts --include-runtime=false
+          git diff --exit-code -- cloudflare-env.d.ts
       - run: bunx tsc --noEmit
       - run: bun test
-      - run: bunx opennextjs-cloudflare build
+      - name: 准备本地 D1（preview 用）
+        run: bunx wrangler d1 migrations apply jiangcheng-atlas-db --local
+      - name: 启动 Cloudflare preview
+        run: |
+          bunx opennextjs-cloudflare preview > /tmp/preview.log 2>&1 &
+          echo "$!" > /tmp/preview.pid
+      - name: 冒烟测试（preview @ 127.0.0.1:8787）
+        timeout-minutes: 6
+        run: bash scripts/smoke.sh
+      - name: 失败时打印 preview 日志
+        if: failure()
+        run: tail -n 200 /tmp/preview.log || true
+      - name: 关闭 preview
+        if: always()
+        run: kill "$(cat /tmp/preview.pid 2>/dev/null)" 2>/dev/null || true

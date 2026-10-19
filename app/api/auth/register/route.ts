@@ -1,7 +1,7 @@
 import { getCloudflareContext } from "@opennextjs/cloudflare";
 import { NextResponse, type NextRequest } from "next/server";
 import { isSameOrigin } from "@/lib/admin-auth";
-import { readJsonBody } from "@/lib/http";
+import { errorLogLine, isUniqueConstraintError, readJsonBody } from "@/lib/http";
 import { hashPassword, newSession, requestIp, USER_COOKIE_NAME, userCookieOptions } from "@/lib/user-auth";
 
 export const dynamic = "force-dynamic";
@@ -34,8 +34,11 @@ export async function POST(request: NextRequest) {
       env.DB.prepare("INSERT INTO user_sessions (token_hash, user_id, expires_at) VALUES (?, ?, ?)").bind(session.tokenHash, id, session.expiresAt),
     ]);
   } catch (error) {
-    console.error("Registration failed", error);
-    return NextResponse.json({ error: "这个账号已被使用" }, { status: 409 });
+    if (isUniqueConstraintError(error)) {
+      return NextResponse.json({ error: "这个账号已被使用" }, { status: 409 });
+    }
+    console.error(errorLogLine("register_failed", error));
+    return NextResponse.json({ error: "注册失败，请稍后重试" }, { status: 500 });
   }
   const response = NextResponse.json({ user: { id, username, displayName, avatarColor: color } }, { status: 201 });
   response.cookies.set(USER_COOKIE_NAME, session.token, userCookieOptions(request.url));

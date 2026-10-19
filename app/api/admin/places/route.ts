@@ -1,5 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { isSameOrigin, mutationAllowed, requireAdmin } from "@/lib/admin-auth";
+import { errorLogLine, isUniqueConstraintError } from "@/lib/http";
 import { listAdminPlaces } from "@/lib/place-repository";
 import { validatePlaceInput } from "@/lib/place-validation";
 
@@ -50,8 +51,11 @@ export async function POST(request: NextRequest) {
       ).bind(crypto.randomUUID(), "place.create", id, place.name),
     ]);
   } catch (error) {
-    console.error("Failed to create place", error);
-    return NextResponse.json({ error: "创建失败，Slug 可能已经存在" }, { status: 409 });
+    console.error(errorLogLine("admin_place_create_failed", error));
+    if (isUniqueConstraintError(error)) {
+      return NextResponse.json({ error: "创建失败，Slug 可能已经存在" }, { status: 409 });
+    }
+    return NextResponse.json({ error: "创建失败，请稍后重试" }, { status: 500 });
   }
 
   return NextResponse.json({ id }, { status: 201 });

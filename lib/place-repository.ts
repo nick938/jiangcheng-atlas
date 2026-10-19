@@ -55,6 +55,14 @@ export async function listPublishedPlaces(db: D1Database): Promise<Place[]> {
   return result.results.map(mapPlace);
 }
 
+export async function findPublishedPlaceBySlug(db: D1Database, slug: string): Promise<Place | null> {
+  const row = await db.prepare(
+    `${PLACE_SELECT}
+     WHERE p.slug = ? AND p.status = 'published'`,
+  ).bind(slug).first<PlaceRow>();
+  return row ? mapPlace(row) : null;
+}
+
 export async function listAdminPlaces(db: D1Database): Promise<AdminPlace[]> {
   const result = await db.prepare(
     `${PLACE_SELECT}

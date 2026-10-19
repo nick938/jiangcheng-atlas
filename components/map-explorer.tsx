@@ -1,16 +1,21 @@
 "use client";
 
 import maplibregl, { type GeoJSONSource, type Map as MapLibreMap } from "maplibre-gl";
-import { gsap } from "gsap";
-import { type FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { type FormEvent, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { CommunityAuthModal } from "@/components/community-auth-modal";
 import { MyActivitiesPanel } from "@/components/my-activities-panel";
 import { ActivityDiscussion } from "@/components/activity-discussion";
 import { EditActivityPanel } from "@/components/edit-activity-panel";
 import { NotificationsPanel } from "@/components/notifications-panel";
+import { loadGsap, type GsapContext } from "@/components/gsap-loader";
+import { mediaThumbnail } from "@/components/media-thumbnail";
+import Link from "next/link";
 import { ProfilePanel } from "@/components/profile-panel";
+import { activityStatusLabel, activityTypeMeta, dateRangeLabel } from "@/lib/activity-format";
 import type { ActivityType, CityActivity, CommunityUser } from "@/lib/community-types";
+import { amapLocationUrl, baiduNavigationUrl } from "@/lib/navigation";
 import { categoryMeta, type CategoryFilter, type Place } from "@/lib/places";
+import { activityUrl, placeUrl } from "@/lib/site";
 
 const WUHAN_CORE_BOUNDS: [[number, number], [number, number]] = [
   [114.215, 30.472],
@@ -25,15 +30,6 @@ const EVENT_COLOR = "#88b800";
 const MAP_VIEW_STORAGE_KEY = "jiangcheng-atlas-map-view";
 const MAP_3D_CAMERA = { pitch: 52, bearing: -18 } as const;
 const MAP_2D_CAMERA = { pitch: 0, bearing: 0 } as const;
-
-const activityTypeMeta: Record<ActivityType, { label: string; short: string }> = {
-  ride: { label: "骑行", short: "骑" },
-  walk: { label: "散步 / City Walk", short: "走" },
-  sports: { label: "运动", short: "动" },
-  food: { label: "吃喝", short: "食" },
-  photo: { label: "拍照", short: "拍" },
-  other: { label: "其他召集", short: "集" },
-};
 
 type PlacesResponse = { places: Place[]; source: "d1" | "seed" };
 type ActivitiesResponse = {
@@ -204,30 +200,6 @@ function toDraftLocationFeatureCollection(location: [number, number] | null) {
   };
 }
 
-function baiduNavigationUrl(activity: CityActivity) {
-  const query = new URLSearchParams({
-    origin: "我的位置",
-    destination: `latlng:${activity.meetingLatitude},${activity.meetingLongitude}|name:${activity.meetingName}`,
-    mode: "driving",
-    region: "武汉",
-    coord_type: "wgs84",
-    output: "html",
-    src: "webapp.jiangcheng.atlas",
-  });
-  return `https://api.map.baidu.com/direction?${query}`;
-}
-
-function amapLocationUrl(activity: CityActivity) {
-  const query = new URLSearchParams({
-    position: `${activity.meetingLongitude},${activity.meetingLatitude}`,
-    name: activity.meetingName,
-    coordinate: "wgs84",
-    callnative: "1",
-    src: "jiangcheng-atlas",
-  });
-  return `https://uri.amap.com/marker?${query}`;
-}
-
 function getCoreMapPadding() {
   return window.matchMedia("(max-width: 760px)").matches
     ? { top: 82, right: 18, bottom: 24, left: 72 }
@@ -250,42 +222,11 @@ function storeMapView(mode: MapViewMode) {
   }
 }
 
+
 function defaultDateTime(offsetHours: number) {
   const date = new Date(Date.now() + offsetHours * 60 * 60_000);
   const pad = (value: number) => String(value).padStart(2, "0");
   return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:00`;
-}
-
-function dateLabel(value: string) {
-  return new Intl.DateTimeFormat("zh-CN", {
-    month: "numeric",
-    day: "numeric",
-    weekday: "short",
-    hour: "2-digit",
-    minute: "2-digit",
-  }).format(new Date(value));
-}
-
-function dateRangeLabel(startsAt: string, endsAt: string) {
-  const start = new Date(startsAt);
-  const end = new Date(endsAt);
-  const sameDay = start.getFullYear() === end.getFullYear()
-    && start.getMonth() === end.getMonth()
-    && start.getDate() === end.getDate();
-  const endLabel = new Intl.DateTimeFormat("zh-CN", sameDay
-    ? { hour: "2-digit", minute: "2-digit" }
-    : { month: "numeric", day: "numeric", weekday: "short", hour: "2-digit", minute: "2-digit" }
-  ).format(end);
-  return `${dateLabel(startsAt)} – ${endLabel}`;
-}
-
-function activityStatusLabel(activity: CityActivity, currentTime: number) {
-  if (activity.status === "cancelled") return "已取消";
-  if (activity.status === "completed") return "已完成";
-  if (new Date(activity.endsAt).getTime() <= currentTime) return "已结束";
-  if (new Date(activity.startsAt).getTime() <= currentTime) return "进行中";
-  if (activity.joinedCount >= activity.capacity) return "已满员";
-  return "正在召集";
 }
 
 function formString(form: FormData, name: string) {
@@ -324,10 +265,19 @@ export function MapExplorer({ initialPlaces }: MapExplorerProps) {
   const missionDetailRef = useRef<HTMLElement>(null);
   const missionShadeRef = useRef<HTMLDivElement>(null);
   const missionMarkerRef = useRef<maplibregl.Marker | null>(null);
+  // 详情卡直接改 transform，避免拖动时每帧 setState（详见 positionDetailNode）。
+  const placeDetailRef = useRef<HTMLElement | null>(null);
+  const activityDetailRef = useRef<HTMLElement | null>(null);
   const placesRef = useRef(initialPlaces);
   const activitiesRef = useRef<CityActivity[]>([]);
+  const myActivitiesRef = useRef<CityActivity[]>([]);
   const createOpenRef = useRef(false);
-  const [currentTime] = useState(() => Date.now());
+  const mapErrorCountRef = useRef(0);
+  const mapStyleLoadedRef = useRef(false);
+  const corePaddingRef = useRef<{ top: number; right: number; bottom: number; left: number } | null>(null);
+  const accountTriggerRef = useRef<HTMLButtonElement>(null);
+  const [webglUnavailable, setWebglUnavailable] = useState(false);
+  const [currentTime, setCurrentTime] = useState(() => Date.now());
   const [places, setPlaces] = useState(initialPlaces);
   const [activities, setActivities] = useState<CityActivity[]>([]);
   const [myActivities, setMyActivities] = useState<CityActivity[]>([]);
@@ -410,7 +360,24 @@ export function MapExplorer({ initialPlaces }: MapExplorerProps) {
     window.history.replaceState(null, "", url);
   }, []);
 
-  const focusPlace = useCallback((place: Place) => {
+  /** 把详情卡钉在某个屏幕坐标：直写 transform，不触发 React 渲染。返回是否真的写成功。 */
+  const positionDetailNode = useCallback((x: number, y: number) => {
+    const node = activityDetailRef.current ?? placeDetailRef.current;
+    if (!node) return false;
+    // 卡片以锚点为中心水平居中、底部位于锚点上方 20px；再夹取到视口内。
+    // 之前只做 translate 不夹取，深链打开时卡片会整体跑到屏幕左上角外（实测 top=-287、left=-38）。
+    const margin = 10;
+    const width = node.offsetWidth;
+    const height = node.offsetHeight;
+    const maxLeft = Math.max(margin, window.innerWidth - width - margin);
+    const maxTop = Math.max(margin, window.innerHeight - height - margin);
+    const left = Math.min(Math.max(x - width / 2, margin), maxLeft);
+    const top = Math.min(Math.max(y - 20 - height, margin), maxTop);
+    node.style.transform = `translate3d(${left}px, ${top}px, 0)`;
+    return true;
+  }, []);
+
+  const focusPlace = useCallback((place: Place, history: "push" | "none" = "push") => {
     setSelectedActivityId(null);
     setSelectedPlaceId(place.id);
     mapRef.current?.flyTo({
@@ -420,13 +387,15 @@ export function MapExplorer({ initialPlaces }: MapExplorerProps) {
       essential: true,
       offset: [0, 150],
     });
+    if (history === "none") return;
+    // 选中是一个可分享/可回退的状态，用 pushState 让浏览器后退能回到上一个视图。
     const url = new URL(window.location.href);
     url.searchParams.delete("event");
     url.searchParams.set("place", place.slug);
-    window.history.replaceState(null, "", url);
+    window.history.pushState(null, "", url);
   }, []);
 
-  const focusActivity = useCallback((activity: CityActivity) => {
+  const focusActivity = useCallback((activity: CityActivity, history: "push" | "none" = "push") => {
     setSelectedPlaceId(null);
     setSelectedActivityId(activity.id);
     mapRef.current?.flyTo({
@@ -436,10 +405,11 @@ export function MapExplorer({ initialPlaces }: MapExplorerProps) {
       essential: true,
       offset: [0, 145],
     });
+    if (history === "none") return;
     const url = new URL(window.location.href);
     url.searchParams.delete("place");
     url.searchParams.set("event", activity.id);
-    window.history.replaceState(null, "", url);
+    window.history.pushState(null, "", url);
   }, []);
 
   const refreshActivities = useCallback(async () => {
@@ -465,7 +435,7 @@ export function MapExplorer({ initialPlaces }: MapExplorerProps) {
     const camera = mapViewMode === "3d" ? MAP_3D_CAMERA : MAP_2D_CAMERA;
     mapRef.current?.fitBounds(WUHAN_CORE_BOUNDS, {
       ...camera,
-      padding: getCoreMapPadding(),
+      padding: corePaddingRef.current ?? getCoreMapPadding(),
       maxZoom: 12.15,
       duration: 900,
       essential: true,
@@ -683,8 +653,46 @@ export function MapExplorer({ initialPlaces }: MapExplorerProps) {
   }, [activities]);
 
   useEffect(() => {
+    myActivitiesRef.current = myActivities;
+  }, [myActivities]);
+
+  useEffect(() => {
     createOpenRef.current = createOpen;
   }, [createOpen]);
+
+  // 「正在召集 / 进行中 / 已结束」这些文案依赖当前时间；页面可能被长时间挂着，
+  // 冻结在挂载时刻会让状态和按钮文案失真，这里每分钟刷新一次。
+  useEffect(() => {
+    const timer = window.setInterval(() => setCurrentTime(Date.now()), 60_000);
+    return () => window.clearInterval(timer);
+  }, []);
+
+  // 浏览器前进/后退：根据 URL 恢复或清除选中态（不写历史，避免和 popstate 互相触发）。
+  useEffect(() => {
+    const handlePopState = () => {
+      const url = new URL(window.location.href);
+      const slug = url.searchParams.get("place");
+      const eventId = url.searchParams.get("event");
+      if (slug) {
+        const place = placesRef.current.find((item) => item.slug === slug);
+        if (place) {
+          focusPlace(place, "none");
+          return;
+        }
+      }
+      if (eventId) {
+        const activity = activitiesRef.current.find((item) => item.id === eventId)
+          ?? myActivitiesRef.current.find((item) => item.id === eventId);
+        if (activity) {
+          focusActivity(activity, "none");
+          return;
+        }
+      }
+      clearSelection();
+    };
+    window.addEventListener("popstate", handlePopState);
+    return () => window.removeEventListener("popstate", handlePopState);
+  }, [clearSelection, focusActivity, focusPlace]);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -731,22 +739,33 @@ export function MapExplorer({ initialPlaces }: MapExplorerProps) {
     const initialMapView = getStoredMapView();
     const initialCamera = initialMapView === "3d" ? MAP_3D_CAMERA : MAP_2D_CAMERA;
     setMapViewMode(initialMapView);
-    const map = new maplibregl.Map({
-      container: containerRef.current,
-      style: MAP_STYLE,
-      bounds: WUHAN_CORE_BOUNDS,
-      fitBoundsOptions: {
+    let map: MapLibreMap;
+    try {
+      map = new maplibregl.Map({
+        container: containerRef.current,
+        style: MAP_STYLE,
+        bounds: WUHAN_CORE_BOUNDS,
+        fitBoundsOptions: {
+          ...initialCamera,
+          padding: getCoreMapPadding(),
+          maxZoom: 12.15,
+        },
         ...initialCamera,
-        padding: getCoreMapPadding(),
-        maxZoom: 12.15,
-      },
-      ...initialCamera,
-      maxBounds: WUHAN_MAX_BOUNDS,
-      minZoom: 10.2,
-      maxZoom: 18,
-      attributionControl: false,
-      canvasContextAttributes: { antialias: true },
-    });
+        maxBounds: WUHAN_MAX_BOUNDS,
+        minZoom: 10.2,
+        maxZoom: 18,
+        attributionControl: false,
+        canvasContextAttributes: { antialias: true },
+      });
+    } catch (error) {
+      // 没有 WebGL/WebGL2 的设备（旧手机、关掉硬件加速、企业策略浏览器）里构造函数会抛
+      // "Failed to initialize WebGL"。以前这个异常会冒泡到 app/error.tsx，整页变成
+      // 「这一页暂时打不开」；现在降级为精简模式，页头与列表仍然可用。
+      console.error("Map initialization failed, falling back to lite mode.", error);
+      setWebglUnavailable(true);
+      setMapError(true);
+      return;
+    }
     mapRef.current = map;
     map.addControl(new maplibregl.NavigationControl({ showCompass: false }), "bottom-right");
     map.addControl(new maplibregl.GeolocateControl({
@@ -755,10 +774,19 @@ export function MapExplorer({ initialPlaces }: MapExplorerProps) {
     }), "bottom-right");
     map.addControl(new maplibregl.AttributionControl({ compact: true }), "bottom-right");
 
-    map.on("load", async () => {
+    map.on("style.load", () => {
+      mapStyleLoadedRef.current = true;
+    });
+    // load 回调里的任何异常（图层/图标/主题应用）都会被下面的 .catch 收住，
+    // 不再冒泡到 React 错误边界把整页替换成错误页。
+    const runMapLoad = async () => {
       applyMissionMapTheme(map);
       map.addSource("places", { type: "geojson", data: toPlaceFeatureCollection(placesRef.current) });
-      await registerMapIcons(map);
+      // 图标注册失败（SVG 解码异常等）不应该让整张地图失去图层与交互：
+      // 之前这里没有 catch，一旦 reject 就会跳过下面全部 addLayer 与 setMapReady(true)。
+      await registerMapIcons(map).catch((error: unknown) => {
+        console.warn("Map icons unavailable, falling back to label-only map.", error);
+      });
       if (mapRef.current !== map) return;
       map.addLayer({
         id: "place-icons",
@@ -904,19 +932,39 @@ export function MapExplorer({ initialPlaces }: MapExplorerProps) {
         });
       }
       setMapReady(true);
+      // 首屏深链（?place= / ?event=）恢复选中态，但不额外压入历史记录。
       const pageUrl = new URL(window.location.href);
       const slug = pageUrl.searchParams.get("place");
       const sharedPlace = placesRef.current.find((place) => place.slug === slug);
-      if (sharedPlace) focusPlace(sharedPlace);
+      if (sharedPlace) focusPlace(sharedPlace, "none");
       const eventId = pageUrl.searchParams.get("event");
       const sharedActivity = activitiesRef.current.find((activity) => activity.id === eventId);
-      if (sharedActivity) focusActivity(sharedActivity);
+      if (sharedActivity) focusActivity(sharedActivity, "none");
+    };
+    map.on("load", () => {
+      void runMapLoad().catch((error: unknown) => {
+        console.error("Map load handling failed.", error);
+        setMapError(true);
+      });
     });
     map.on("error", (event) => {
       console.error("Map rendering error", event.error);
-      setMapError(true);
+      mapErrorCountRef.current += 1;
+      // MapLibre 的 error 也会包含单张瓦片 404、sprite 缺图等瞬时失败，
+      // 只有「样式根本没加载成功」或「连续多次错误」才提示用户可以刷新。
+      if (!mapStyleLoadedRef.current || mapErrorCountRef.current >= 3) setMapError(true);
     });
+    // 屏幕旋转/尺寸变化后重新计算内边距，保证 resetCoreView 的 fitBounds 仍居中。
+    const paddingQuery = window.matchMedia("(max-width: 760px)");
+    const handlePaddingChange = () => {
+      const padding = getCoreMapPadding();
+      corePaddingRef.current = padding;
+      mapRef.current?.setPadding(padding);
+    };
+    handlePaddingChange();
+    paddingQuery.addEventListener("change", handlePaddingChange);
     return () => {
+      paddingQuery.removeEventListener("change", handlePaddingChange);
       map.remove();
       mapRef.current = null;
     };
@@ -977,21 +1025,41 @@ export function MapExplorer({ initialPlaces }: MapExplorerProps) {
         ? [selectedActivity.meetingLongitude, selectedActivity.meetingLatitude] as [number, number]
         : null;
     if (!map || !mapReady || !target) {
+      if (!map && target) {
+        // 精简模式（无 WebGL）：没有地图可以投影，把详情卡固定在视口底部中间，
+        // 这样从下面的列表里选地点/差事仍然能看到完整详情。
+        const x = window.innerWidth / 2;
+        const y = window.innerHeight - 24;
+        if (!positionDetailNode(x, y)) setDetailPosition({ x, y });
+        return;
+      }
       setDetailPosition(null);
       return;
     }
+    // 拖动/惯性期间 move 会以约 60fps 触发：直接写 transform（合成层），不再 setState，
+    // 否则每帧都会重渲染整棵树，还会让带 backdrop-filter 的卡片反复重算背景。
     const updatePosition = () => {
       const point = map.project(target);
-      setDetailPosition({ x: point.x, y: point.y });
+      if (!positionDetailNode(point.x, point.y)) {
+        // 卡片还没挂载（刚选中）时先用 state 把它渲染出来，之后就走直写路径。
+        setDetailPosition({ x: point.x, y: point.y });
+      }
     };
     updatePosition();
     map.on("move", updatePosition);
+    map.on("moveend", updatePosition);
     map.on("resize", updatePosition);
     return () => {
       map.off("move", updatePosition);
+      map.off("moveend", updatePosition);
       map.off("resize", updatePosition);
     };
-  }, [mapReady, selectedActivity, selectedPlace]);
+  }, [mapReady, positionDetailNode, selectedActivity, selectedPlace, webglUnavailable]);
+
+  // 卡片挂载/切换选中后，把最新坐标同步到 DOM（React 不再负责 left/top）。
+  useLayoutEffect(() => {
+    if (detailPosition) positionDetailNode(detailPosition.x, detailPosition.y);
+  }, [detailPosition, positionDetailNode, selectedActivityId, selectedPlaceId]);
 
   useEffect(() => {
     missionMarkerRef.current?.remove();
@@ -1009,27 +1077,33 @@ export function MapExplorer({ initialPlaces }: MapExplorerProps) {
     missionMarkerRef.current = marker;
 
     const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-    const context = gsap.context(() => {
-      gsap.fromTo(markerElement, { scale: 0.4, autoAlpha: 0 }, {
-        scale: 1,
-        autoAlpha: 1,
-        duration: reducedMotion ? 0.01 : 0.48,
-        ease: "back.out(1.8)",
-      });
-      if (!reducedMotion) {
-        gsap.fromTo(markerElement.querySelectorAll("i"), { scale: 0.25, autoAlpha: 0.9 }, {
-          scale: 2.4,
-          autoAlpha: 0,
-          duration: 1.8,
-          stagger: 0.9,
-          repeat: -1,
-          ease: "power1.out",
+    let context: GsapContext | null = null;
+    let alive = true;
+    void loadGsap().then((gsap) => {
+      if (!alive) return;
+      context = gsap.context(() => {
+        gsap.fromTo(markerElement, { scale: 0.4, autoAlpha: 0 }, {
+          scale: 1,
+          autoAlpha: 1,
+          duration: reducedMotion ? 0.01 : 0.48,
+          ease: "back.out(1.8)",
         });
-      }
-    }, markerElement);
+        if (!reducedMotion) {
+          gsap.fromTo(markerElement.querySelectorAll("i"), { scale: 0.25, autoAlpha: 0.9 }, {
+            scale: 2.4,
+            autoAlpha: 0,
+            duration: 1.8,
+            stagger: 0.9,
+            repeat: -1,
+            ease: "power1.out",
+          });
+        }
+      }, markerElement);
+    });
 
     return () => {
-      context.revert();
+      alive = false;
+      context?.revert();
       marker.remove();
       if (missionMarkerRef.current === marker) missionMarkerRef.current = null;
     };
@@ -1038,68 +1112,85 @@ export function MapExplorer({ initialPlaces }: MapExplorerProps) {
   useEffect(() => {
     const detail = missionDetailRef.current;
     const shade = missionShadeRef.current;
-    if (!selectedActivity || !detail || !shade) {
-      if (shade) gsap.to(shade, { autoAlpha: 0, duration: 0.18, overwrite: true });
-      return;
-    }
     const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-    const context = gsap.context(() => {
-      const timeline = gsap.timeline({ defaults: { ease: "power3.out" } });
-      timeline
-        .to(shade, { autoAlpha: 1, duration: reducedMotion ? 0.01 : 0.35 }, 0)
-        .fromTo(detail, { autoAlpha: 0, y: 30, scale: 0.94 }, {
-          autoAlpha: 1,
-          y: 0,
-          scale: 1,
-          duration: reducedMotion ? 0.01 : 0.56,
-        }, 0.08)
-        .fromTo(detail.querySelectorAll(".mission-visual > *, .detail-tags, .detail-body > h2, .detail-body > h3"), {
-          autoAlpha: 0,
-          y: 12,
-        }, {
-          autoAlpha: 1,
-          y: 0,
-          duration: reducedMotion ? 0.01 : 0.34,
-          stagger: reducedMotion ? 0 : 0.045,
-        }, 0.24);
-    }, shellRef);
-    return () => context.revert();
+    let context: GsapContext | null = null;
+    let alive = true;
+    void loadGsap().then((gsap) => {
+      if (!alive) return;
+      if (!selectedActivity || !detail || !shade) {
+        if (shade) gsap.to(shade, { autoAlpha: 0, duration: 0.18, overwrite: true });
+        return;
+      }
+      context = gsap.context(() => {
+        const timeline = gsap.timeline({ defaults: { ease: "power3.out" } });
+        timeline
+          .to(shade, { autoAlpha: 1, duration: reducedMotion ? 0.01 : 0.35 }, 0)
+          .fromTo(detail, { autoAlpha: 0, y: 30, scale: 0.94 }, {
+            autoAlpha: 1,
+            y: 0,
+            scale: 1,
+            duration: reducedMotion ? 0.01 : 0.56,
+          }, 0.08)
+          .fromTo(detail.querySelectorAll(".mission-visual > *, .detail-tags, .detail-body > h2, .detail-body > h3"), {
+            autoAlpha: 0,
+            y: 12,
+          }, {
+            autoAlpha: 1,
+            y: 0,
+            duration: reducedMotion ? 0.01 : 0.34,
+            stagger: reducedMotion ? 0 : 0.045,
+          }, 0.24);
+      }, shellRef);
+    });
+    return () => {
+      alive = false;
+      context?.revert();
+    };
   }, [selectedActivity]);
 
   useEffect(() => {
     if (!createOpen) return;
     const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-    const context = gsap.context(() => {
-      gsap.fromTo(".create-event-panel", { autoAlpha: 0, x: 42, scale: 0.97 }, {
-        autoAlpha: 1,
-        x: 0,
-        scale: 1,
-        duration: reducedMotion ? 0.01 : 0.48,
-        ease: "power3.out",
-      });
-      if (!reducedMotion) {
-        gsap.fromTo(".mission-create-mode b", { autoAlpha: 0.35 }, {
+    let context: GsapContext | null = null;
+    let alive = true;
+    void loadGsap().then((gsap) => {
+      if (!alive) return;
+      context = gsap.context(() => {
+        gsap.fromTo(".create-event-panel", { autoAlpha: 0, x: 42, scale: 0.97 }, {
           autoAlpha: 1,
-          duration: 0.8,
-          repeat: -1,
-          yoyo: true,
-          ease: "sine.inOut",
+          x: 0,
+          scale: 1,
+          duration: reducedMotion ? 0.01 : 0.48,
+          ease: "power3.out",
         });
-      }
-    }, shellRef);
-    return () => context.revert();
+        if (!reducedMotion) {
+          gsap.fromTo(".mission-create-mode b", { autoAlpha: 0.35 }, {
+            autoAlpha: 1,
+            duration: 0.8,
+            repeat: -1,
+            yoyo: true,
+            ease: "sine.inOut",
+          });
+        }
+      }, shellRef);
+    });
+    return () => {
+      alive = false;
+      context?.revert();
+    };
   }, [createOpen]);
 
   useEffect(() => {
     if (!mapReady || selectedActivityId) return;
     const eventId = new URL(window.location.href).searchParams.get("event");
     const shared = activities.find((activity) => activity.id === eventId);
-    if (shared) queueMicrotask(() => focusActivity(shared));
+    // 深链的首次恢复不应该再写一条历史记录。
+    if (shared) queueMicrotask(() => focusActivity(shared, "none"));
   }, [activities, focusActivity, mapReady, selectedActivityId]);
 
   return (
     <main ref={shellRef} className={`atlas-shell mission-map ${createOpen ? "creating-mission" : ""}`}>
-      <div ref={containerRef} className="atlas-map" aria-label="武汉城市地点与活动互动地图" />
+      <div ref={containerRef} className="atlas-map" role="application" aria-label="武汉城市地点与活动互动地图" />
       <div className="map-wash" aria-hidden="true" />
       <div ref={missionShadeRef} className="mission-focus-shade" aria-hidden="true" />
       {createOpen && (
@@ -1110,7 +1201,7 @@ export function MapExplorer({ initialPlaces }: MapExplorerProps) {
       )}
 
       <header className="atlas-header">
-        <button className="brand" type="button" onClick={resetCoreView}>
+        <button className="brand" type="button" onClick={resetCoreView} aria-label="返回全图视图">
           <span className="brand-mark" aria-hidden="true">
             <svg viewBox="0 0 44 44"><path d="M5 25c7-8 11-8 17 0s10 8 17 0" /><path d="M5 17c7-8 11-8 17 0s10 8 17 0" /></svg>
           </span>
@@ -1122,16 +1213,34 @@ export function MapExplorer({ initialPlaces }: MapExplorerProps) {
               <button
                 type="button"
                 className="account-trigger"
+                ref={accountTriggerRef}
                 aria-haspopup="menu"
                 aria-expanded={accountMenuOpen}
                 onClick={() => setAccountMenuOpen((open) => !open)}
+                onKeyDown={(event) => {
+                  if (event.key === "Escape" && accountMenuOpen) {
+                    event.stopPropagation();
+                    setAccountMenuOpen(false);
+                  }
+                }}
               >
                 <i style={{ background: user.avatarColor }}>{user.displayName.slice(0, 1)}</i>
                 <span><small>已登录</small><strong>{user.displayName}</strong></span>
                 <b aria-hidden="true">⌄</b>
               </button>
               {accountMenuOpen && (
-                <div className="account-menu" role="menu">
+                <div
+                  className="account-menu"
+                  role="menu"
+                  tabIndex={-1}
+                  onKeyDown={(event) => {
+                    if (event.key === "Escape") {
+                      event.stopPropagation();
+                      setAccountMenuOpen(false);
+                      accountTriggerRef.current?.focus();
+                    }
+                  }}
+                >
                   <button type="button" role="menuitem" onClick={openMyActivities}>
                     <span><strong>我的差事</strong><small>进行中与历史记录</small></span>
                     <em>{myActivities.length}</em>
@@ -1164,6 +1273,9 @@ export function MapExplorer({ initialPlaces }: MapExplorerProps) {
               登录 / 注册
             </button>
           )}
+          <Link className="mission-link community-link" href="/community">
+            社区<span aria-hidden="true">→</span>
+          </Link>
           <button type="button" className="mission-link create-event-link" onClick={() => openCreatePanel()}>
             创建差事 <span>＋</span>
           </button>
@@ -1336,13 +1448,17 @@ export function MapExplorer({ initialPlaces }: MapExplorerProps) {
       />}
 
       {selectedPlace && detailPosition && (
-        <section className="place-detail" aria-live="polite" style={{ left: detailPosition.x, top: detailPosition.y }}>
+        <section ref={placeDetailRef} className="place-detail">
+          {/* <output> 的隐式 ARIA role 就是 status，等价于 aria-live="polite"，但不需要 role 属性。 */}
+          <output className="visually-hidden">已打开地点详情：{selectedPlace.name}</output>
           <button className="detail-close" type="button" onClick={clearSelection} aria-label="关闭地点详情">×</button>
           <div
             className={`detail-visual ${selectedPlace.imageUrl ? "has-image" : ""}`}
             style={{
               "--detail-color": categoryMeta[selectedPlace.categoryId].color,
-              ...(selectedPlace.imageUrl ? { backgroundImage: `linear-gradient(180deg, transparent 45%, rgba(17, 28, 26, .72)), url(${JSON.stringify(selectedPlace.imageUrl)})` } : {}),
+              ...(selectedPlace.imageUrl
+                ? { backgroundImage: `linear-gradient(180deg, transparent 45%, rgba(17, 28, 26, .72)), url(${JSON.stringify(mediaThumbnail(selectedPlace.imageUrl))})` }
+                : {}),
             } as React.CSSProperties}
           >
             <span><CategoryPictogram id={selectedPlace.categoryId} /></span>
@@ -1357,18 +1473,35 @@ export function MapExplorer({ initialPlaces }: MapExplorerProps) {
             <div className="detail-tags"><span>{categoryMeta[selectedPlace.categoryId].label}</span><span>{selectedPlace.district}</span>{selectedPlace.featured && <span>本期推荐</span>}</div>
             <h2>{selectedPlace.name}</h2><h3>{selectedPlace.subtitle}</h3><p>{selectedPlace.description}</p>
             <div className="detail-address"><span aria-hidden="true">⌖</span><span><small>地址</small>{selectedPlace.address}</span></div>
-            <button type="button" className="share-button" onClick={() => navigator.clipboard.writeText(window.location.href)}>复制这个地点的分享链接</button>
+            <div className="event-navigation" aria-label="地点导航与分享">
+              <a href={baiduNavigationUrl({ name: selectedPlace.name, longitude: selectedPlace.longitude, latitude: selectedPlace.latitude })} target="_blank" rel="noreferrer">百度导航</a>
+              <a href={amapLocationUrl({ name: selectedPlace.name, longitude: selectedPlace.longitude, latitude: selectedPlace.latitude })} target="_blank" rel="noreferrer">高德地图</a>
+              <button
+                type="button"
+                onClick={async () => {
+                  try {
+                    await navigator.clipboard.writeText(new URL(placeUrl(selectedPlace.slug), window.location.origin).href);
+                    setNotice("地点分享链接已复制，打开后可一键回到地图。");
+                  } catch {
+                    setNotice("复制失败，请从浏览器地址栏复制链接。");
+                  }
+                }}
+              >
+                复制分享链接
+              </button>
+            </div>
           </div>
         </section>
       )}
 
       {selectedActivity && detailPosition && (
-        <section ref={missionDetailRef} className="place-detail event-detail" aria-live="polite" style={{ left: detailPosition.x, top: detailPosition.y }}>
+        <section ref={missionDetailRef} className="place-detail event-detail">
+          <output className="visually-hidden">{activityStatusLabel(selectedActivity, currentTime)}：{selectedActivity.title}</output>
           <button className="detail-close" type="button" onClick={clearSelection} aria-label="关闭差事详情">×</button>
           <div
             className={`mission-visual ${selectedActivity.imageUrl ? "has-image" : ""}`}
             style={selectedActivity.imageUrl ? {
-              backgroundImage: `linear-gradient(180deg, rgba(11, 28, 25, .08), rgba(11, 28, 25, .74)), url(${JSON.stringify(selectedActivity.imageUrl)})`,
+              backgroundImage: `linear-gradient(180deg, rgba(11, 28, 25, .08), rgba(11, 28, 25, .74)), url(${JSON.stringify(mediaThumbnail(selectedActivity.imageUrl))})`,
             } : undefined}
           >
             <span>EVENT · {activityTypeMeta[selectedActivity.activityType].label}</span>
@@ -1385,14 +1518,14 @@ export function MapExplorer({ initialPlaces }: MapExplorerProps) {
               <span><small>队伍</small>{selectedActivity.joinedCount} / {selectedActivity.capacity} 人</span>
             </div>
             <div className="event-navigation" aria-label="集合地点导航">
-              <a href={baiduNavigationUrl(selectedActivity)} target="_blank" rel="noreferrer">百度导航</a>
-              <a href={amapLocationUrl(selectedActivity)} target="_blank" rel="noreferrer">高德地图</a>
+              <a href={baiduNavigationUrl({ name: selectedActivity.meetingName, longitude: selectedActivity.meetingLongitude, latitude: selectedActivity.meetingLatitude })} target="_blank" rel="noreferrer">百度导航</a>
+              <a href={amapLocationUrl({ name: selectedActivity.meetingName, longitude: selectedActivity.meetingLongitude, latitude: selectedActivity.meetingLatitude })} target="_blank" rel="noreferrer">高德地图</a>
               <button
                 type="button"
                 onClick={async () => {
                   try {
-                    await navigator.clipboard.writeText(window.location.href);
-                    setNotice("差事分享链接已复制。");
+                    await navigator.clipboard.writeText(new URL(activityUrl(selectedActivity.id), window.location.origin).href);
+                    setNotice("活动分享链接已复制，打开后可一键回到地图。");
                   } catch {
                     setNotice("复制失败，请从浏览器地址栏复制链接。");
                   }
@@ -1400,6 +1533,7 @@ export function MapExplorer({ initialPlaces }: MapExplorerProps) {
               >
                 复制分享链接
               </button>
+              <a href={`/api/activities/${selectedActivity.id}/calendar`} download>加入日历</a>
             </div>
             <div className="event-owner">
               <i style={{ background: selectedActivity.creator.avatarColor }}>{selectedActivity.creator.displayName.slice(0, 1)}</i>
@@ -1455,7 +1589,39 @@ export function MapExplorer({ initialPlaces }: MapExplorerProps) {
         />
       )}
       {notice && <button type="button" className="map-notice map-toast" onClick={() => setNotice("")}>{notice} ×</button>}
-      {mapError && <div className="map-notice">底图暂时无法加载，请检查网络后刷新。</div>}
+      {webglUnavailable && (
+        <section className="map-fallback" aria-label="精简模式">
+          <header>
+            <span>LITE MODE</span>
+            <h2>当前浏览器不支持 WebGL，已切换为精简模式</h2>
+            <p>底图无法渲染，但下面的地点与差事列表仍然可以浏览、打开详情。</p>
+          </header>
+          <div className="map-fallback-list">
+            {categoryActivities.map((activity) => (
+              <button key={activity.id} type="button" onClick={() => focusActivity(activity, "none")}>
+                <i aria-hidden="true">差</i>
+                <span><strong>{activity.title}</strong><small>{activity.meetingName}</small></span>
+              </button>
+            ))}
+            {categoryPlaces.map((place) => (
+              <button key={place.id} type="button" onClick={() => focusPlace(place, "none")}>
+                <i aria-hidden="true">{categoryMeta[place.categoryId].icon}</i>
+                <span><strong>{place.name}</strong><small>{place.district} · {place.subtitle}</small></span>
+              </button>
+            ))}
+            {categoryPlaces.length === 0 && categoryActivities.length === 0 && (
+              <p className="map-fallback-empty">当前分类下暂时没有内容，换一个分类看看。</p>
+            )}
+          </div>
+        </section>
+      )}
+
+      {mapError && !webglUnavailable && (
+        <output className="map-notice">
+          底图暂时无法加载，请检查网络后刷新。
+          <button type="button" className="map-notice-close" onClick={() => { mapErrorCountRef.current = 0; setMapError(false); }} aria-label="关闭提示">×</button>
+        </output>
+      )}
       <div className="map-view-switch" role="group" aria-label="地图视角">
         <span>视角</span>
         <button

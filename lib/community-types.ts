@@ -63,7 +63,7 @@ export type ActivityComment = {
 export type CommunityNotification = {
   id: string;
   activityId: string | null;
-  type: "activity_joined" | "activity_updated" | "activity_cancelled" | "new_comment" | "moderation";
+  type: "activity_joined" | "activity_updated" | "activity_cancelled" | "new_comment" | "moderation" | "post_comment";
   title: string;
   body: string;
   readAt: string | null;

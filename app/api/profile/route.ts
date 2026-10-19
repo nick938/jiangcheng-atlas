@@ -1,7 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { isSameOrigin } from "@/lib/admin-auth";
 import { readJsonBody } from "@/lib/http";
-import { currentUser, USER_COOKIE_NAME, userCookieOptions } from "@/lib/user-auth";
+import { allowUserAction, currentUser, USER_COOKIE_NAME, userCookieOptions } from "@/lib/user-auth";
 
 export const dynamic = "force-dynamic";
 
@@ -9,6 +9,7 @@ export async function PATCH(request: NextRequest) {
   if (!isSameOrigin(request)) return NextResponse.json({ error: "请求来源无效" }, { status: 403 });
   const { env, user } = await currentUser(request);
   if (!user) return NextResponse.json({ error: "请先登录" }, { status: 401 });
+  if (!(await allowUserAction(env, user.id))) return NextResponse.json({ error: "操作太频繁" }, { status: 429 });
   const body = await readJsonBody<{ displayName?: unknown }>(request, 2048);
   const displayName = typeof body?.displayName === "string" ? body.displayName.trim() : "";
   if (displayName.length < 2 || displayName.length > 24) return NextResponse.json({ error: "昵称需为 2–24 个字符" }, { status: 400 });
@@ -21,6 +22,7 @@ export async function DELETE(request: NextRequest) {
   if (!isSameOrigin(request)) return NextResponse.json({ error: "请求来源无效" }, { status: 403 });
   const { env, user } = await currentUser(request);
   if (!user) return NextResponse.json({ error: "请先登录" }, { status: 401 });
+  if (!(await allowUserAction(env, user.id))) return NextResponse.json({ error: "操作太频繁" }, { status: 429 });
   const body = await readJsonBody<{ confirmation?: unknown }>(request, 1024);
   if (body?.confirmation !== "注销") return NextResponse.json({ error: "请输入“注销”确认" }, { status: 400 });
   const anonymized = `deleted_${crypto.randomUUID().replaceAll("-", "").slice(0, 18)}`;

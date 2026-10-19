@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState, type FormEvent } from "react";
+import { useCallback, useEffect, useRef, useState, type FormEvent } from "react";
 import type { ActivityComment, CityActivity, CommunityUser } from "@/lib/community-types";
 
 type Props = {
@@ -16,21 +16,31 @@ export function ActivityDiscussion({ activity, user, onRequireAuth, onNotice, on
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [reporting, setReporting] = useState(false);
+  const loadAbortRef = useRef<AbortController | null>(null);
 
   const load = useCallback(async () => {
+    // 快速切换活动/开关面板时，旧请求应该被取消，避免迟到的响应覆盖新状态。
+    loadAbortRef.current?.abort();
+    const controller = new AbortController();
+    loadAbortRef.current = controller;
     setLoading(true);
     try {
-      const response = await fetch(`/api/activities/${encodeURIComponent(activity.id)}/comments`, { cache: "no-store" });
+      const response = await fetch(`/api/activities/${encodeURIComponent(activity.id)}/comments`, {
+        cache: "no-store",
+        signal: controller.signal,
+      });
       const payload = await response.json() as { comments?: ActivityComment[]; error?: string };
       if (!response.ok) throw new Error(payload.error ?? "留言加载失败");
       setComments(payload.comments ?? []);
     } catch (error) {
+      if (controller.signal.aborted) return;
       onNotice(error instanceof Error ? error.message : "留言加载失败");
     } finally {
-      setLoading(false);
+      if (!controller.signal.aborted) setLoading(false);
     }
   }, [activity.id, onNotice]);
 
+  useEffect(() => () => loadAbortRef.current?.abort(), []);
   useEffect(() => { void load(); }, [load]);
 
   async function submitComment(event: FormEvent<HTMLFormElement>) {

@@ -2,7 +2,7 @@ import { NextResponse, type NextRequest } from "next/server";
 import { isSameOrigin } from "@/lib/admin-auth";
 import { validateActivityInput } from "@/lib/activity-validation";
 import { listActivities, listMyActivities } from "@/lib/community-repository";
-import { readJsonBody } from "@/lib/http";
+import { errorLogLine, isUniqueConstraintError, readJsonBody } from "@/lib/http";
 import { inspectUploadedImage, MAX_IMAGE_REQUEST_BYTES } from "@/lib/image-upload";
 import { currentUser } from "@/lib/user-auth";
 
@@ -30,7 +30,13 @@ export async function POST(request: NextRequest) {
     if (!Number.isFinite(contentLength) || contentLength <= 0 || contentLength > MAX_IMAGE_REQUEST_BYTES) {
       return NextResponse.json({ error: "图片不能超过 5 MB" }, { status: 413 });
     }
-    const form = await request.formData();
+    let form: FormData;
+    try {
+      form = await request.formData();
+    } catch (error) {
+      console.warn(errorLogLine("activity_form_parse_failed", error));
+      return NextResponse.json({ error: "表单数据无法解析，请重新提交" }, { status: 400 });
+    }
     body = Object.fromEntries(
       [...form.entries()].filter((entry): entry is [string, string] => typeof entry[1] === "string"),
     );
@@ -63,7 +69,7 @@ export async function POST(request: NextRequest) {
       });
       if (!object) return NextResponse.json({ error: "图片存储失败" }, { status: 500 });
     } catch (error) {
-      console.error("Failed to upload activity image", error);
+      console.error(errorLogLine("activity_image_upload_failed", error, { userId: user.id }));
       return NextResponse.json({ error: "图片存储失败，请稍后重试" }, { status: 500 });
     }
   }
@@ -80,7 +86,10 @@ export async function POST(request: NextRequest) {
     ]);
   } catch (error) {
     if (imageKey) await env.MEDIA.delete(imageKey);
-    console.error("Failed to create activity", error);
+    console.error(errorLogLine("activity_create_failed", error, { userId: user.id }));
+    if (isUniqueConstraintError(error)) {
+      return NextResponse.json({ error: "差事发布冲突，请重试一次" }, { status: 409 });
+    }
     return NextResponse.json({ error: "差事发布失败，图片已回滚" }, { status: 500 });
   }
   return NextResponse.json({ id }, { status: 201 });

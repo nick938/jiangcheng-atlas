@@ -1,6 +1,6 @@
 "use client";
 
-import { type FormEvent, useEffect, useState } from "react";
+import { type FormEvent, useEffect, useRef, useState } from "react";
 import type { CommunityUser } from "@/lib/community-types";
 
 type CommunityAuthModalProps = {
@@ -20,6 +20,11 @@ async function authRequest(path: string, payload: Record<string, FormDataEntryVa
 }
 
 export function CommunityAuthModal({ onClose, onAuthenticated }: CommunityAuthModalProps) {
+  const cardRef = useRef<HTMLElement>(null);
+  // onClose 在调用方是内联箭头函数（每次渲染都会变），放进依赖会让焦点陷进
+  // 「重新运行 effect → 重新聚焦」的循环，所以用 ref 保存最新引用。
+  const onCloseRef = useRef(onClose);
+  onCloseRef.current = onClose;
   const [mode, setMode] = useState<"register" | "login">("register");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
@@ -32,6 +37,46 @@ export function CommunityAuthModal({ onClose, onAuthenticated }: CommunityAuthMo
       .then((payload) => setWechatConfigured(Boolean((payload as { configured?: boolean }).configured)))
       .catch(() => undefined);
     return () => controller.abort();
+  }, []);
+
+  // 可访问性：打开时把焦点移进弹窗、Tab 循环留在弹窗内、Esc 关闭、关闭后把焦点还给触发按钮。
+  useEffect(() => {
+    const previouslyFocused = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    const card = cardRef.current;
+    const focusables = () => card
+      ? Array.from(card.querySelectorAll<HTMLElement>(
+        'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])',
+      ))
+      : [];
+    // 优先聚焦第一个输入框，而不是右上角的「×」。
+    (card?.querySelector<HTMLElement>("input:not([type=hidden])") ?? focusables()[0])?.focus();
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        onCloseRef.current();
+        return;
+      }
+      if (event.key !== "Tab") return;
+      const items = focusables();
+      if (items.length === 0) return;
+      const first = items[0];
+      const last = items[items.length - 1];
+      const active = document.activeElement;
+      const inside = card?.contains(active) ?? false;
+      if (event.shiftKey && (!inside || active === first)) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && (!inside || active === last)) {
+        event.preventDefault();
+        first.focus();
+      }
+    };
+    document.addEventListener("keydown", handleKeyDown, true);
+    return () => {
+      document.removeEventListener("keydown", handleKeyDown, true);
+      previouslyFocused?.focus();
+    };
   }, []);
 
   const submit = async (event: FormEvent<HTMLFormElement>) => {
@@ -53,7 +98,7 @@ export function CommunityAuthModal({ onClose, onAuthenticated }: CommunityAuthMo
     <div className="community-auth-shade" role="presentation" onMouseDown={(event) => {
       if (event.target === event.currentTarget) onClose();
     }}>
-      <section className="community-auth-card" role="dialog" aria-modal="true" aria-label="活动身份">
+      <section ref={cardRef} className="community-auth-card" role="dialog" aria-modal="true" aria-label="活动身份">
         <button type="button" className="community-auth-close" onClick={onClose} aria-label="关闭">×</button>
         <span className="community-auth-kicker">PLAYER IDENTITY</span>
         <h2>参与前，留一个江湖名号。</h2>

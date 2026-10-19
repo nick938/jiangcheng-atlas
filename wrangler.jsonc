@@ -17,9 +17,20 @@
     "enabled": true,
     "head_sampling_rate": 1
   },
+  "services": [
+    {
+      "binding": "WORKER_SELF_REFERENCE",
+      "service": "jiangcheng-atlas"
+    }
+  ],
   "d1_databases": [
     {
       "binding": "DB",
+      "database_name": "jiangcheng-atlas-db",
+      "database_id": "0a73aa5c-96b9-4828-8a2b-0424cc99d32b"
+    },
+    {
+      "binding": "NEXT_TAG_CACHE_D1",
       "database_name": "jiangcheng-atlas-db",
       "database_id": "0a73aa5c-96b9-4828-8a2b-0424cc99d32b"
     }
@@ -28,6 +39,24 @@
     {
       "binding": "MEDIA",
       "bucket_name": "jiangcheng-atlas-media"
+    },
+    {
+      "binding": "NEXT_INC_CACHE_R2_BUCKET",
+      "bucket_name": "jiangcheng-atlas-next-cache"
+    }
+  ],
+  "durable_objects": {
+    "bindings": [
+      {
+        "name": "NEXT_CACHE_DO_QUEUE",
+        "class_name": "DOQueueHandler"
+      }
+    ]
+  },
+  "migrations": [
+    {
+      "tag": "v1",
+      "new_sqlite_classes": ["DOQueueHandler"]
     }
   ],
   "ratelimits": [

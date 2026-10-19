@@ -45,7 +45,10 @@ function equalBytes(left: Uint8Array, right: Uint8Array): boolean {
   return difference === 0;
 }
 
-export async function passwordsMatch(candidate: string, expected: string): Promise<boolean> {
+export async function passwordsMatch(candidate: string, expected: string | undefined): Promise<boolean> {
+  // Fail closed: a missing ADMIN_PASSWORD must never match an empty candidate
+  // (TextEncoder.encode(undefined) is encode(""), which would compare equal).
+  if (typeof expected !== "string" || expected.length === 0) return false;
   const [candidateHash, expectedHash] = await Promise.all([digest(candidate), digest(expected)]);
   return equalBytes(candidateHash, expectedHash);
 }
@@ -58,8 +61,10 @@ export async function createAdminSession(secret: string): Promise<string> {
   return `${payload}.${signature}`;
 }
 
-export async function verifyAdminSession(token: string | undefined, secret: string): Promise<boolean> {
-  if (!token) return false;
+export async function verifyAdminSession(token: string | undefined, secret: string | undefined): Promise<boolean> {
+  // Fail closed: without a configured secret an empty HMAC key would let anyone
+  // forge a valid session cookie.
+  if (!token || typeof secret !== "string" || secret.length === 0) return false;
   const [payload, signature, extra] = token.split(".");
   if (!payload || !signature || extra) return false;
 
@@ -100,8 +105,14 @@ export function getCookieValue(request: NextRequest, name: string): string | und
 
 export async function requireAdmin(request: NextRequest): Promise<CloudflareEnv | null> {
   const { env } = await getCloudflareContext({ async: true });
-  const valid = await verifyAdminSession(getCookieValue(request, ADMIN_COOKIE_NAME), env.ADMIN_SESSION_SECRET);
+  const secret = env.ADMIN_SESSION_SECRET;
+  if (typeof secret !== "string" || secret.length === 0) return null;
+  const valid = await verifyAdminSession(getCookieValue(request, ADMIN_COOKIE_NAME), secret);
   return valid ? env : null;
+}
+
+export function requestClientIp(request: Request) {
+  return request.headers.get("cf-connecting-ip") ?? "local";
 }
 
 export async function mutationAllowed(env: CloudflareEnv): Promise<boolean> {

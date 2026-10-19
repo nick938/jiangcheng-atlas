@@ -1,5 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { isSameOrigin, mutationAllowed, requireAdmin } from "@/lib/admin-auth";
+import { errorLogLine } from "@/lib/http";
 import {
   inspectUploadedImage,
   MAX_IMAGE_REQUEST_BYTES,
@@ -18,7 +19,13 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "图片不能超过 5 MB" }, { status: 413 });
   }
 
-  const form = await request.formData();
+  let form: FormData;
+  try {
+    form = await request.formData();
+  } catch (error) {
+    console.warn(errorLogLine("admin_media_form_parse_failed", error));
+    return NextResponse.json({ error: "表单数据无法解析，请重新提交" }, { status: 400 });
+  }
   const placeId = form.get("placeId");
   const file = form.get("file");
   if (typeof placeId !== "string" || !placeId || placeId.length > 100 || !(file instanceof File)) {
@@ -59,7 +66,7 @@ export async function POST(request: NextRequest) {
     ]);
   } catch (error) {
     await env.MEDIA.delete(key);
-    console.error("Failed to attach uploaded media", error);
+    console.error(errorLogLine("admin_media_attach_failed", error, { placeId }));
     return NextResponse.json({ error: "图片关联失败，已回滚上传" }, { status: 500 });
   }
 

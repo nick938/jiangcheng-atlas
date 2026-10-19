@@ -48,10 +48,10 @@ export async function PATCH(request: NextRequest, context: RouteContext<"/api/ac
   const result = await env.DB.prepare(
     `UPDATE activities SET status = 'completed', completed_at = CURRENT_TIMESTAMP,
       updated_at = CURRENT_TIMESTAMP
-     WHERE id = ? AND creator_id = ? AND status = 'open'`,
-  ).bind(id, user.id).run();
+     WHERE id = ? AND creator_id = ? AND status = 'open' AND starts_at <= ?`,
+  ).bind(id, user.id, new Date().toISOString()).run();
   if (!result.meta.changes) {
-    return NextResponse.json({ error: "只能完成自己发起的进行中差事" }, { status: 409 });
+    return NextResponse.json({ error: "只能完成自己已开始的进行中差事" }, { status: 409 });
   }
   return NextResponse.json({ completed: true });
 }

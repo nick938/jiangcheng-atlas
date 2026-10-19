@@ -5,7 +5,14 @@ import { currentUser } from "@/lib/user-auth";
 
 export const dynamic = "force-dynamic";
 
-const targetTypes = new Set(["activity", "comment", "user"]);
+const targetTypes = new Set(["activity", "comment", "user", "post", "post_comment"]);
+const targetQueries: Record<string, string> = {
+  activity: "SELECT id FROM activities WHERE id = ?",
+  comment: "SELECT id FROM activity_comments WHERE id = ?",
+  user: "SELECT id FROM users WHERE id = ?",
+  post: "SELECT id FROM community_posts WHERE id = ?",
+  post_comment: "SELECT id FROM post_comments WHERE id = ?",
+};
 const reasons = new Set(["spam", "unsafe", "harassment", "false_info", "other"]);
 
 export async function POST(request: NextRequest) {
@@ -23,11 +30,7 @@ export async function POST(request: NextRequest) {
   if (!targetTypes.has(targetType) || !reasons.has(reason) || targetId.length < 1 || targetId.length > 100 || details.length > 500) {
     return NextResponse.json({ error: "举报信息不完整" }, { status: 400 });
   }
-  const targetQuery = targetType === "activity"
-    ? "SELECT id FROM activities WHERE id = ?"
-    : targetType === "comment"
-      ? "SELECT id FROM activity_comments WHERE id = ?"
-      : "SELECT id FROM users WHERE id = ?";
+  const targetQuery = targetQueries[targetType];
   if (!(await env.DB.prepare(targetQuery).bind(targetId).first())) {
     return NextResponse.json({ error: "举报对象不存在" }, { status: 404 });
   }

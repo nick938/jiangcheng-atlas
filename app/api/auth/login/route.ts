@@ -2,19 +2,36 @@ import { getCloudflareContext } from "@opennextjs/cloudflare";
 import { NextResponse, type NextRequest } from "next/server";
 import { isSameOrigin } from "@/lib/admin-auth";
 import { readJsonBody } from "@/lib/http";
-import { hashPassword, newSession, requestIp, USER_COOKIE_NAME, userCookieOptions, verifyPassword } from "@/lib/user-auth";
+import {
+  allowUserAuth,
+  hashPassword,
+  loginFailureLogLine,
+  newSession,
+  requestIp,
+  USER_COOKIE_NAME,
+  userCookieOptions,
+  userLoginRateLimitKey,
+  verifyPassword,
+} from "@/lib/user-auth";
 
 export const dynamic = "force-dynamic";
 
 export async function POST(request: NextRequest) {
   if (!isSameOrigin(request)) return NextResponse.json({ error: "请求来源无效" }, { status: 403 });
   const { env } = await getCloudflareContext({ async: true });
-  if (!(await env.USER_AUTH_RATE_LIMITER.limit({ key: requestIp(request) })).success) {
+  const ip = requestIp(request);
+  if (!(await allowUserAuth(env, ip))) {
+    console.warn(loginFailureLogLine("", ip, true));
     return NextResponse.json({ error: "操作太频繁，请一分钟后再试" }, { status: 429 });
   }
   const body = await readJsonBody<{ username?: unknown; password?: unknown }>(request, 4096);
   const username = typeof body?.username === "string" ? body.username.trim().toLowerCase() : "";
   const password = typeof body?.password === "string" ? body.password : "";
+  // 账号维度限流：与 IP 维度叠加，避免换 IP 分布式撞库；键与错误文案都不区分账号是否存在。
+  if (username && !(await allowUserAuth(env, userLoginRateLimitKey(username)))) {
+    console.warn(loginFailureLogLine(username, ip, true));
+    return NextResponse.json({ error: "操作太频繁，请一分钟后再试" }, { status: 429 });
+  }
   const row = await env.DB.prepare(`SELECT id, username, display_name, avatar_color, password_hash,
       password_salt, password_iterations FROM users WHERE username = ? AND status = 'active'`)
     .bind(username).first<{
@@ -29,7 +46,11 @@ export async function POST(request: NextRequest) {
     salt: row.password_salt,
     iterations: row.password_iterations,
   }) : false;
-  if (!row || !valid) return NextResponse.json({ error: "账号或密码不正确" }, { status: 401 });
+  if (!row || !valid) {
+    // 结构性失败日志（不含口令，也不区分账号是否存在），供监控识别撞库。
+    console.warn(loginFailureLogLine(username, ip, false));
+    return NextResponse.json({ error: "账号或密码不正确" }, { status: 401 });
+  }
   if (!row.password_salt) {
     const upgraded = await hashPassword(password, env.USER_AUTH_SECRET);
     await env.DB.prepare(`UPDATE users SET password_hash = ?, password_salt = ?, password_iterations = ?,

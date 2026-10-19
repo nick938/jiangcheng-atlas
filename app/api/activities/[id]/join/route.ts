@@ -1,6 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { isSameOrigin } from "@/lib/admin-auth";
-import { currentUser } from "@/lib/user-auth";
+import { allowUserAction, currentUser } from "@/lib/user-auth";
 
 export const dynamic = "force-dynamic";
 
@@ -28,6 +28,7 @@ export async function DELETE(request: NextRequest, context: RouteContext<"/api/a
   const { id } = await context.params;
   const { env, user } = await currentUser(request);
   if (!user) return NextResponse.json({ error: "请先登录" }, { status: 401 });
+  if (!(await allowUserAction(env, user.id))) return NextResponse.json({ error: "操作太频繁" }, { status: 429 });
   const activity = await env.DB.prepare("SELECT creator_id FROM activities WHERE id = ?").bind(id).first<{ creator_id: string }>();
   if (activity?.creator_id === user.id) return NextResponse.json({ error: "发起人不能退出，可取消活动" }, { status: 409 });
   const result = await env.DB.prepare(

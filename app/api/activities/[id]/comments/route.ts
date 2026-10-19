@@ -2,7 +2,7 @@ import { NextResponse, type NextRequest } from "next/server";
 import { isSameOrigin } from "@/lib/admin-auth";
 import type { ActivityComment } from "@/lib/community-types";
 import { readJsonBody } from "@/lib/http";
-import { currentUser } from "@/lib/user-auth";
+import { allowUserAction, currentUser } from "@/lib/user-auth";
 
 export const dynamic = "force-dynamic";
 
@@ -31,9 +31,9 @@ export async function GET(request: NextRequest, context: { params: Promise<{ id:
   if (!activity) return NextResponse.json({ error: "活动不存在或已下架" }, { status: 404 });
   const rows = await env.DB.prepare(`SELECT c.id, c.activity_id, c.body, c.created_at,
       u.id AS user_id, u.username, u.display_name, u.avatar_color
-    FROM activity_comments c JOIN users u ON u.id = c.user_id
+    FROM activity_comments c JOIN users u ON u.id = c.user_id AND u.status = 'active'
     WHERE c.activity_id = ? AND c.status = 'published'
-    ORDER BY datetime(c.created_at) ASC LIMIT 100`)
+    ORDER BY c.created_at ASC LIMIT 100`)
     .bind(id).all<CommentRow>();
   return NextResponse.json({ comments: rows.results.map((row) => mapComment(row, user?.id ?? null)) }, {
     headers: { "Cache-Control": "no-store" },
@@ -79,6 +79,7 @@ export async function DELETE(request: NextRequest, context: { params: Promise<{ 
   const { id } = await context.params;
   const { env, user } = await currentUser(request);
   if (!user) return NextResponse.json({ error: "请先登录" }, { status: 401 });
+  if (!(await allowUserAction(env, user.id))) return NextResponse.json({ error: "操作太频繁" }, { status: 429 });
   const commentId = new URL(request.url).searchParams.get("comment");
   if (!commentId) return NextResponse.json({ error: "缺少留言编号" }, { status: 400 });
   const result = await env.DB.prepare(`UPDATE activity_comments SET status = 'hidden', updated_at = CURRENT_TIMESTAMP

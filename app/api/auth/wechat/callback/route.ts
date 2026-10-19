@@ -1,5 +1,5 @@
 import { NextResponse, type NextRequest } from "next/server";
-import { newSession, USER_COOKIE_NAME, userCookieOptions } from "@/lib/user-auth";
+import { allowUserAuth, newSession, requestIp, requestRateLimitKey, USER_COOKIE_NAME, userCookieOptions } from "@/lib/user-auth";
 import { safeEqual, WECHAT_STATE_COOKIE, wechatBindings, wechatConfigured, wechatStateCookieOptions } from "@/lib/wechat-auth";
 
 export const dynamic = "force-dynamic";
@@ -13,6 +13,10 @@ function redirectWith(request: NextRequest, status: string) {
 
 export async function GET(request: NextRequest) {
   const env = await wechatBindings();
+  // 限流放在最前面：失败的 state/code 请求也计入，避免被刷回调。
+  if (!(await allowUserAuth(env, requestRateLimitKey("wechat-callback", requestIp(request))))) {
+    return redirectWith(request, "throttled");
+  }
   const code = request.nextUrl.searchParams.get("code") ?? "";
   const state = request.nextUrl.searchParams.get("state") ?? "";
   const expectedState = request.cookies.get(WECHAT_STATE_COOKIE)?.value ?? "";

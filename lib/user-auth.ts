@@ -140,3 +140,44 @@ export function userCookieOptions(requestUrl: string) {
 export function requestIp(request: Request) {
   return request.headers.get("cf-connecting-ip") ?? "local";
 }
+
+/* ------------------------------------------------------------------ *
+ * 限流键与限流守卫
+ *
+ * 键的构造保持为纯函数，便于单测；守卫只做「取限流结果」这一件事，
+ * 让各路由的检查顺序（同源 → 登录 → 限流 → 校验）保持一行可读。
+ * ------------------------------------------------------------------ */
+
+/** 账号维度：用于登录防爆破，与 IP 维度叠加。 */
+export function userLoginRateLimitKey(username: string) {
+  return `user-login:${username.toLowerCase()}`;
+}
+
+/** 写操作维度：按用户计数，替代此前的「无限制」。 */
+export function userActionRateLimitKey(userId: string) {
+  return `user-action:${userId}`;
+}
+
+/** 其它维度（如 wechat:ip、register:ip）；scope 为空时退化为纯值。 */
+export function requestRateLimitKey(scope: string, value: string) {
+  return scope ? `${scope}:${value}` : value;
+}
+
+export async function allowUserAction(env: CloudflareEnv, userId: string): Promise<boolean> {
+  const outcome = await env.USER_ACTION_RATE_LIMITER.limit({ key: userActionRateLimitKey(userId) });
+  return outcome.success;
+}
+
+export async function allowUserAuth(env: CloudflareEnv, key: string): Promise<boolean> {
+  const outcome = await env.USER_AUTH_RATE_LIMITER.limit({ key });
+  return outcome.success;
+}
+
+/** 登录失败的结构化日志行：不记录口令，也不区分账号是否存在。 */
+export function loginFailureLogLine(username: string, ip: string, throttled: boolean) {
+  return JSON.stringify({
+    event: throttled ? "user_login_throttled" : "user_login_failed",
+    username,
+    ip,
+  });
+}

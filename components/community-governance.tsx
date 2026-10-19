@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { POST_TOPIC_LABELS, type PostTopic } from "@/lib/post-types";
 import styles from "./admin-console.module.css";
 
 type AdminUser = {
@@ -12,20 +13,24 @@ type AdminActivity = {
   starts_at: string; ends_at: string; created_at: string; creator_name: string;
   member_count: number; open_reports: number;
 };
+type AdminPost = {
+  id: string; title: string; status: "published" | "hidden"; topic: string;
+  created_at: string; author_name: string; comment_count: number; open_reports: number;
+};
 type AdminReport = {
-  id: string; target_type: "activity" | "comment" | "user"; target_id: string;
+  id: string; target_type: "activity" | "comment" | "user" | "post" | "post_comment"; target_id: string;
   reason: string; details: string; status: "open" | "resolved" | "dismissed";
   created_at: string; reporter_name: string; target_label: string;
 };
-type Snapshot = { users: AdminUser[]; activities: AdminActivity[]; reports: AdminReport[]; error?: string };
+type Snapshot = { users: AdminUser[]; activities: AdminActivity[]; posts: AdminPost[]; reports: AdminReport[]; error?: string };
 
 const reasonLabels: Record<string, string> = {
   spam: "广告或刷屏", unsafe: "存在安全风险", harassment: "骚扰或攻击", false_info: "虚假信息", other: "其他",
 };
 
 export function CommunityGovernance({ onUnauthorized }: { onUnauthorized: () => void }) {
-  const [snapshot, setSnapshot] = useState<Snapshot>({ users: [], activities: [], reports: [] });
-  const [tab, setTab] = useState<"reports" | "activities" | "users">("reports");
+  const [snapshot, setSnapshot] = useState<Snapshot>({ users: [], activities: [], posts: [], reports: [] });
+  const [tab, setTab] = useState<"reports" | "activities" | "posts" | "users">("reports");
   const [busyId, setBusyId] = useState("");
   const [error, setError] = useState("");
 
@@ -35,9 +40,14 @@ export function CommunityGovernance({ onUnauthorized }: { onUnauthorized: () => 
       onUnauthorized();
       return;
     }
-    const payload = await response.json() as Snapshot;
+    const payload = await response.json() as Partial<Snapshot>;
     if (!response.ok) throw new Error(payload.error ?? "社区数据加载失败");
-    setSnapshot(payload);
+    setSnapshot({
+      users: payload.users ?? [],
+      activities: payload.activities ?? [],
+      posts: payload.posts ?? [],
+      reports: payload.reports ?? [],
+    });
   }, [onUnauthorized]);
 
   useEffect(() => {
@@ -76,6 +86,7 @@ export function CommunityGovernance({ onUnauthorized }: { onUnauthorized: () => 
       <nav className={styles.governanceTabs} aria-label="社区治理分类">
         <button type="button" className={tab === "reports" ? styles.active : ""} onClick={() => setTab("reports")}>待处理举报 <em>{openReports}</em></button>
         <button type="button" className={tab === "activities" ? styles.active : ""} onClick={() => setTab("activities")}>活动 <em>{snapshot.activities.length}</em></button>
+        <button type="button" className={tab === "posts" ? styles.active : ""} onClick={() => setTab("posts")}>帖子 <em>{snapshot.posts.length}</em></button>
         <button type="button" className={tab === "users" ? styles.active : ""} onClick={() => setTab("users")}>用户 <em>{snapshot.users.length}</em></button>
       </nav>
 
@@ -89,6 +100,8 @@ export function CommunityGovernance({ onUnauthorized }: { onUnauthorized: () => 
             {report.status === "open" && <div className={styles.governanceActions}>
               {report.target_type === "activity" && <button type="button" disabled={busyId === report.id} onClick={() => void mutate(report.target_id, "activity.hide", "确认先下架该活动？")}>下架活动</button>}
               {report.target_type === "comment" && <button type="button" disabled={busyId === report.id} onClick={() => void mutate(report.target_id, "comment.hide", "确认隐藏该留言？")}>隐藏留言</button>}
+              {report.target_type === "post" && <button type="button" disabled={busyId === report.id} onClick={() => void mutate(report.target_id, "post.hide", "确认隐藏该帖子？")}>隐藏帖子</button>}
+              {report.target_type === "post_comment" && <button type="button" disabled={busyId === report.id} onClick={() => void mutate(report.target_id, "post_comment.hide", "确认隐藏该评论？")}>隐藏评论</button>}
               {report.target_type === "user" && <button type="button" disabled={busyId === report.id} onClick={() => void mutate(report.target_id, "user.suspend", "确认停用该账号并清除其登录会话？")}>停用账号</button>}
               <button type="button" disabled={busyId === report.id} onClick={() => void mutate(report.id, "report.resolve", "确认将举报标记为已处理？")}>标记已处理</button>
               <button type="button" className={styles.subtle} disabled={busyId === report.id} onClick={() => void mutate(report.id, "report.dismiss", "确认驳回这条举报？")}>驳回</button>
@@ -101,6 +114,15 @@ export function CommunityGovernance({ onUnauthorized }: { onUnauthorized: () => 
             <h3>{activity.title}</h3><p>发起人：{activity.creator_name} · {activity.member_count} 人参加 · {activity.open_reports} 条待处理举报</p>
             <div className={styles.governanceActions}>
               <button type="button" disabled={busyId === activity.id} onClick={() => void mutate(activity.id, activity.moderation_status === "visible" ? "activity.hide" : "activity.show", activity.moderation_status === "visible" ? "确认下架该活动？" : "确认恢复公开该活动？")}>{activity.moderation_status === "visible" ? "下架" : "恢复公开"}</button>
+            </div>
+          </article>
+        ))}
+        {tab === "posts" && snapshot.posts.map((post) => (
+          <article key={post.id}>
+            <div className={styles.governanceMeta}><b>{POST_TOPIC_LABELS[post.topic as PostTopic] ?? post.topic}</b><span>{new Date(post.created_at).toLocaleString("zh-CN")}</span><em data-status={post.status}>{post.status === "published" ? "公开" : "已隐藏"}</em></div>
+            <h3>{post.title}</h3><p>作者：{post.author_name} · {post.comment_count} 条评论 · {post.open_reports} 条待处理举报</p>
+            <div className={styles.governanceActions}>
+              <button type="button" disabled={busyId === post.id} onClick={() => void mutate(post.id, post.status === "published" ? "post.hide" : "post.show", post.status === "published" ? "确认隐藏该帖子？" : "确认恢复公开该帖子？")}>{post.status === "published" ? "隐藏" : "恢复公开"}</button>
             </div>
           </article>
         ))}
