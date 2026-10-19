@@ -6,19 +6,20 @@ import { allowUserAction, currentUser } from "@/lib/user-auth";
 export const dynamic = "force-dynamic";
 
 type NotificationRow = {
-  id: string; activity_id: string | null; type: CommunityNotification["type"];
+  id: string; activity_id: string | null; post_id: string | null; type: CommunityNotification["type"];
   title: string; body: string; read_at: string | null; created_at: string;
 };
 
 export async function GET(request: NextRequest) {
   const { env, user } = await currentUser(request);
   if (!user) return NextResponse.json({ error: "请先登录" }, { status: 401 });
-  const rows = await env.DB.prepare(`SELECT id, activity_id, type, title, body, read_at, created_at
+  const rows = await env.DB.prepare(`SELECT id, activity_id, post_id, type, title, body, read_at, created_at
     FROM user_notifications WHERE user_id = ? ORDER BY created_at DESC LIMIT 50`)
     .bind(user.id).all<NotificationRow>();
   const notifications: CommunityNotification[] = rows.results.map((row) => ({
     id: row.id,
     activityId: row.activity_id,
+    postId: row.post_id ?? null,
     type: row.type,
     title: row.title,
     body: row.body,

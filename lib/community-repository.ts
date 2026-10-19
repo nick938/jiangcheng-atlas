@@ -1,3 +1,4 @@
+import { mediaUrl } from "@/lib/media";
 import type { ActivityType, CityActivity, CommunityUser, CyclingRoute } from "@/lib/community-types";
 
 type RouteRow = {
@@ -48,7 +49,7 @@ function mapActivityRow(row: ActivityRow, user: CommunityUser | null): CityActiv
     meetingLongitude: row.meeting_longitude, meetingLatitude: row.meeting_latitude,
     capacity: row.capacity, pace: row.pace, status: row.status,
     completedAt: row.completed_at, cancelledAt: row.cancelled_at,
-    imageUrl: row.image_key ? `/media/${row.image_key}` : null,
+    imageUrl: row.image_key ? mediaUrl(row.image_key) : null,
     creator: { id: row.creator_id, username: row.username, displayName: row.display_name, avatarColor: row.avatar_color },
     joinedCount: Number(row.joined_count), joinedByMe: Number(row.joined_by_me) > 0, isOwner: user?.id === row.creator_id,
     commentCount: Number(row.comment_count),

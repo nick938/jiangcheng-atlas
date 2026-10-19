@@ -1,5 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { isSameOrigin } from "@/lib/admin-auth";
+import { insertNotificationIfNotRecent } from "@/lib/notification-repository";
 import { allowUserAction, currentUser } from "@/lib/user-auth";
 
 export const dynamic = "force-dynamic";
@@ -17,9 +18,19 @@ export async function POST(request: NextRequest, context: RouteContext<"/api/act
      AND (SELECT COUNT(*) FROM activity_members m WHERE m.activity_id = a.id) < a.capacity`,
   ).bind(user.id, id).run();
   if (!result.meta.changes) return NextResponse.json({ error: "活动已开始、已满员，或你已经加入" }, { status: 409 });
-  await env.DB.prepare(`INSERT INTO user_notifications (id, user_id, activity_id, type, title, body)
-    SELECT ?, creator_id, id, 'activity_joined', '有新成员加入', ? FROM activities WHERE id = ? AND creator_id != ?`)
-    .bind(crypto.randomUUID(), `${user.displayName} 加入了你的活动。`, id, user.id).run();
+  const activity = await env.DB.prepare("SELECT creator_id FROM activities WHERE id = ?")
+    .bind(id).first<{ creator_id: string }>();
+  if (activity && activity.creator_id !== user.id) {
+    // 10 分钟冷却：反复退出再加入不会给发起人刷出多条「有新成员加入」。
+    await insertNotificationIfNotRecent(env.DB, {
+      userId: activity.creator_id,
+      type: "activity_joined",
+      activityId: id,
+      title: "有新成员加入",
+      body: `${user.displayName} 加入了你的活动。`,
+      cooldownMinutes: 10,
+    });
+  }
   return NextResponse.json({ joined: true });
 }
 

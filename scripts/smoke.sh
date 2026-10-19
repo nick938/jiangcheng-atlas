@@ -3,12 +3,14 @@
 #
 # 用法：
 #   BASE_URL=http://127.0.0.1:8787 bash scripts/smoke.sh
-#   MEDIA_KEY=places/<placeId>/<uuid>.jpg bash scripts/smoke.sh   # 可选，校验图片直出
+#   MEDIA_KEY=places/<placeId>/<uuid>.jpg bash scripts/smoke.sh   # 可选，校验 Worker /media 回退
+#   MEDIA_KEY=... MEDIA_CDN_BASE=https://media.atlas.sololeveling.top bash scripts/smoke.sh  # 顺带校验 CDN 直出
 #   SMOKE_SKIP=/community bash scripts/smoke.sh                   # 本地调试时临时跳过（CI 不要用）
 #
 # 环境变量：
 #   BASE_URL           默认 http://127.0.0.1:8787
 #   MEDIA_KEY          可选，R2 中真实存在的对象键；为空则跳过图片检查
+#   MEDIA_CDN_BASE     可选，R2 自定义域基地址；与 MEDIA_KEY 同时设置时额外校验 CDN 直出与边缘缓存
 #   SMOKE_SKIP         逗号/空格分隔的要跳过的路径列表
 #   SMOKE_WAIT_SECONDS 启动等待秒数，默认 60（CI 起 preview 后无需自己 sleep）
 #   SMOKE_TIMEOUT      单次请求超时秒数，默认 15
@@ -16,6 +18,7 @@ set -uo pipefail
 
 BASE_URL="${BASE_URL:-http://127.0.0.1:8787}"
 MEDIA_KEY="${MEDIA_KEY:-}"
+MEDIA_CDN_BASE="${MEDIA_CDN_BASE:-}"
 SMOKE_SKIP="${SMOKE_SKIP:-}"
 SMOKE_WAIT_SECONDS="${SMOKE_WAIT_SECONDS:-60}"
 SMOKE_TIMEOUT="${SMOKE_TIMEOUT:-15}"
@@ -60,11 +63,16 @@ dump() {
 }
 
 fetch() {
-  local path="$1"
+  local path="$1" url
+  # 绝对 URL（例如 CDN 自定义域）直接使用，其余拼到 BASE_URL 之后
+  case "${path}" in
+    http://*|https://*) url="${path}" ;;
+    *) url="${BASE_URL}${path}" ;;
+  esac
   : > "${tmp}/body"
   : > "${tmp}/headers"
   curl -sS --max-time "${SMOKE_TIMEOUT}" -D "${tmp}/headers" -o "${tmp}/body" \
-    -w '%{http_code}' "${BASE_URL}${path}" > "${tmp}/status" 2> "${tmp}/curl.err" || true
+    -w '%{http_code}' "${url}" > "${tmp}/status" 2> "${tmp}/curl.err" || true
   if [ ! -s "${tmp}/status" ]; then
     printf '000' > "${tmp}/status"
   fi
@@ -175,6 +183,16 @@ if [ -n "${MEDIA_KEY}" ]; then
   expect_header "/media/${MEDIA_KEY}" "cache-control" "max-age" || true
 else
   printf '  - 跳过 /media 检查（未设置 MEDIA_KEY）\n'
+fi
+
+if [ -n "${MEDIA_KEY}" ] && [ -n "${MEDIA_CDN_BASE}" ]; then
+  cdn_url="${MEDIA_CDN_BASE%/}/${MEDIA_KEY}"
+  fetch "${cdn_url}"
+  expect_status "${cdn_url}" 200 || true
+  expect_header "${cdn_url}" "content-type" "image/" || true
+  expect_header "${cdn_url}" "cache-control" "immutable" || true
+elif [ -n "${MEDIA_CDN_BASE}" ]; then
+  printf '  - 跳过 CDN 检查（未设置 MEDIA_KEY）\n'
 fi
 
 printf '\n结果：%s 项通过，%s 项失败\n' "${pass}" "${fail}"

@@ -27,7 +27,7 @@ const nextConfig: NextConfig = {
       // Tailwind / MapLibre 会注入内联样式
       "style-src 'self' 'unsafe-inline'",
       // 地图瓦片/字形/雪碧图来自 OpenFreeMap；部分种子地点图片走 Wikimedia（Special:Redirect 会跳到 upload.wikimedia.org）
-      "img-src 'self' data: blob: https://tiles.openfreemap.org https://commons.wikimedia.org https://upload.wikimedia.org",
+      "img-src 'self' data: blob: https://tiles.openfreemap.org https://commons.wikimedia.org https://upload.wikimedia.org https://media.atlas.sololeveling.top",
       "font-src 'self' data:",
       "connect-src 'self' https://tiles.openfreemap.org",
       // MapLibre 用 blob: URL 创建解析瓦片的 Worker

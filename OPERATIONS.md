@@ -82,9 +82,11 @@ bunx wrangler d1 execute jiangcheng-atlas-db --remote --command "CREATE TABLE IF
 - 想进一步减少 R2 读取可用 regional cache（`withRegionalCache(r2IncrementalCache, { mode: "long-lived" })`），但与按需再验证同时使用时要配 Cache Purge，否则各数据中心可能读到旧值。
 - `preview`（`wrangler dev`）会用本地模拟绑定；缓存写入 `.wrangler/state`，可随手删除。
 
-## R2 图片直出（可选，降低 Worker 与 R2 读成本）
+## R2 图片直出（已启用）
 
-图片当前由 `app/media/[...key]/route.ts` 经 Worker 回源 R2。要让 CDN 直出：
+图片走 R2 自定义域 `media.atlas.sololeveling.top`（已绑定 `jiangcheng-atlas-media`），`lib/media.ts` 在生产构建返回 CDN 绝对地址；`app/media/[...key]/route.ts` 保留为回退（本地开发、未绑定域名、或需要经过 Worker 校验的对象）。要临时关闭 CDN，把 `lib/site.ts` 的 `MEDIA_PUBLIC_BASE` 置空即可整体退回 `/media`。
+
+历史配置步骤（换域名/重建环境时参考）：
 
 1. Cloudflare 控制台 → R2 → `jiangcheng-atlas-media` → Settings → **Public access → Custom Domains → Connect Domain**，填 `media.atlas.sololeveling.top`。
 2. 该域名会自动创建 CNAME 记录（`media` → 桶的 R2 域名）并签发证书，不需要手工加 DNS；确认 Zone 的代理状态为已代理。

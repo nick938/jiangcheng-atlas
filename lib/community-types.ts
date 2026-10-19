@@ -63,6 +63,8 @@ export type ActivityComment = {
 export type CommunityNotification = {
   id: string;
   activityId: string | null;
+  /** 帖子类通知（post_comment）指向的帖子；其余通知为 null。 */
+  postId: string | null;
   type: "activity_joined" | "activity_updated" | "activity_cancelled" | "new_comment" | "moderation" | "post_comment";
   title: string;
   body: string;

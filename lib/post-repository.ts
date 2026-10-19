@@ -1,3 +1,5 @@
+import { mediaUrl } from "@/lib/media";
+import { notificationInsertStatement } from "@/lib/notification-repository";
 import type { CommunityPost, PostComment, PostSummary, PostTopic } from "@/lib/post-types";
 
 const DEFAULT_LIMIT = 20;
@@ -89,7 +91,7 @@ function mapPostSummary(row: PostRow & { body: string }, viewerId: string | null
     id: row.id,
     title: row.title,
     topic: row.topic as PostTopic,
-    imageUrl: row.image_key ? `/media/${row.image_key}` : null,
+    imageUrl: row.image_key ? mediaUrl(row.image_key) : null,
     author: mapAuthor({
       id: row.author_id,
       username: row.username,
@@ -110,7 +112,7 @@ function mapPost(row: PostRow & { body: string }, viewerId: string | null): Comm
     title: row.title,
     body: row.body,
     topic: row.topic as PostTopic,
-    imageUrl: row.image_key ? `/media/${row.image_key}` : null,
+    imageUrl: row.image_key ? mediaUrl(row.image_key) : null,
     author: mapAuthor({
       id: row.author_id,
       username: row.username,
@@ -263,16 +265,14 @@ export async function createPostComment(
     notifyAuthorId !== input.userId &&
     post.author_status === "active"
   ) {
-    statements.push(
-      db.prepare(`INSERT INTO user_notifications (id, user_id, activity_id, type, title, body)
-        VALUES (?, ?, NULL, 'post_comment', ?, ?)`)
-        .bind(
-          crypto.randomUUID(),
-          notifyAuthorId,
-          "你的帖子有新回复",
-          `${post.commenter_name ?? "有人"} 回复了「${post.title}」：${input.body.slice(0, 80)}`,
-        ),
-    );
+    // 与评论同事务写入；5 分钟冷却窗口内同一帖子只留一条，避免连续评论刷屏。
+    statements.push(notificationInsertStatement(db, {
+      userId: notifyAuthorId,
+      type: "post_comment",
+      postId: input.postId,
+      title: "你的帖子有新回复",
+      body: `${post.commenter_name ?? "有人"} 回复了「${post.title}」：${input.body.slice(0, 80)}`,
+    }));
   }
   await db.batch(statements);
   return commentId;

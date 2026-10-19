@@ -12,13 +12,12 @@ import { POST_TOPIC_LABELS, type CommunityPost, type PostComment } from "@/lib/p
 import { SITE_NAME, SITE_URL } from "@/lib/site";
 import { resolveViewer } from "@/app/community/viewer";
 
-// 帖子详情按需缓存，发帖/编辑/隐藏会通过 revalidatePath 立即失效。
-export const revalidate = 60;
-
-// 同 /place：动态段启用 ISR；隐藏/编辑帖子时通过 revalidatePath 立即失效。
-export function generateStaticParams() {
-  return [];
-}
+// 帖子详情保持动态渲染：页面需要读取会话 Cookie（resolveViewer → headers()）来标记
+// 「我的帖子」并给出评论框，而 headers() 与 ISR 静态生成互斥——加了 generateStaticParams
+// 后 Next 会把该路由当作静态生成，运行时产物不一致直接 500（本地 preview 实测）。
+// 列表页 /community 与 /place、/event 不受影响：前者本来就是 force-dynamic，
+// 后者不读取请求头，继续走 R2 增量缓存。
+export const dynamic = "force-dynamic";
 
 type PostPageProps = { params: Promise<{ id: string }> };
 

@@ -2,6 +2,7 @@ import { NextResponse, type NextRequest } from "next/server";
 import { isSameOrigin } from "@/lib/admin-auth";
 import type { ActivityComment } from "@/lib/community-types";
 import { readJsonBody } from "@/lib/http";
+import { notificationInsertStatement } from "@/lib/notification-repository";
 import { allowUserAction, currentUser } from "@/lib/user-auth";
 
 export const dynamic = "force-dynamic";
@@ -66,9 +67,14 @@ export async function POST(request: NextRequest, context: { params: Promise<{ id
       .bind(commentId, id, user.id, content),
   ];
   if (activity.creator_id !== user.id) {
-    statements.push(env.DB.prepare(`INSERT INTO user_notifications
-      (id, user_id, activity_id, type, title, body) VALUES (?, ?, ?, 'new_comment', ?, ?)`)
-      .bind(crypto.randomUUID(), activity.creator_id, id, `「${activity.title}」有新留言`, `${user.displayName}：${content.slice(0, 80)}`));
+    // 与留言同事务写入；5 分钟冷却内同一活动只留一条，连续留言不会刷屏。
+    statements.push(notificationInsertStatement(env.DB, {
+      userId: activity.creator_id,
+      type: "new_comment",
+      activityId: id,
+      title: `「${activity.title}」有新留言`,
+      body: `${user.displayName}：${content.slice(0, 80)}`,
+    }));
   }
   await env.DB.batch(statements);
   return NextResponse.json({ id: commentId }, { status: 201 });

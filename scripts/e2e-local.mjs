@@ -96,6 +96,14 @@ const TINY_PNG = Buffer.from(
   "base64",
 );
 
+/** 生产 URL 是 CDN 绝对地址；本地 preview 的 R2 是独立的，所以统一还原成本地路径再取。 */
+function toLocalMediaPath(imageUrl) {
+  if (typeof imageUrl !== "string" || imageUrl.length === 0) return null;
+  if (imageUrl.startsWith("/")) return imageUrl;
+  const match = /^https?:\/\/[^/]+(\/.*)$/.exec(imageUrl);
+  return match ? match[1] : null;
+}
+
 function pngForm(fields) {
   const form = new FormData();
   for (const [key, value] of Object.entries(fields)) form.set(key, value);
@@ -206,6 +214,12 @@ async function main() {
 
     const comment = await bob.json(`/api/activities/${activityId}/comments`, { method: "POST", json: { body: "E2E 评论：周末见！" } });
     check("乙发表评论 → 201", comment.status === 201, `status=${comment.status}`);
+    await bob.json(`/api/activities/${activityId}/comments`, { method: "POST", json: { body: "E2E 评论：再补充一条。" } });
+    await bob.json(`/api/activities/${activityId}/comments`, { method: "POST", json: { body: "E2E 评论：第三条。" } });
+    const aliceNotifications = await alice.json("/api/notifications");
+    const activityNotices = (aliceNotifications.data?.notifications ?? [])
+      .filter((n) => n.type === "new_comment" && n.activityId === activityId);
+    check("通知去重：连续 3 条评论只留 1 条活动评论通知", activityNotices.length === 1, `count=${activityNotices.length}`);
 
     const anonComment = await fetch(`${BASE}/api/activities/${activityId}/comments`, {
       method: "POST",
@@ -249,8 +263,9 @@ async function main() {
       // 从分享页 HTML 中拿不到 imageUrl，改从列表接口读取
       const list = await (await fetch(`${BASE}/api/activities`)).json().catch(() => null);
       const found = list?.activities?.find((a) => a.id === activity);
-      mediaKey = found?.imageUrl ?? null;
-      check("活动列表返回封面 imageUrl", typeof mediaKey === "string" && mediaKey.startsWith("/media/"), String(mediaKey));
+      const imageUrl = found?.imageUrl ?? null;
+      mediaKey = toLocalMediaPath(imageUrl);
+      check("活动列表返回封面 URL（CDN 或 /media）", typeof imageUrl === "string" && Boolean(mediaKey), String(imageUrl));
     }
 
     if (mediaKey) {
@@ -360,6 +375,12 @@ async function main() {
 
         const bobComment = await bob.json(`/api/posts/${postId}/comments`, { method: "POST", json: { body: "E2E 帖子评论：写得好。" } });
         check("帖主以外用户评论 → 201", bobComment.status === 201, `status=${bobComment.status}`);
+        await bob.json(`/api/posts/${postId}/comments`, { method: "POST", json: { body: "E2E 帖子评论：再补充。" } });
+        await bob.json(`/api/posts/${postId}/comments`, { method: "POST", json: { body: "E2E 帖子评论：第三条。" } });
+        const aliceNotices = await alice.json("/api/notifications");
+        const postNotices = (aliceNotices.data?.notifications ?? [])
+          .filter((n) => n.type === "post_comment" && n.postId === postId);
+        check("帖子评论通知只留 1 条且带 postId", postNotices.length === 1, `count=${postNotices.length} postId=${postNotices[0]?.postId ?? "null"}`);
 
         const commentId = bobComment.data?.id;
         const forbidden = await carol.json(`/api/posts/${postId}/comments?comment=${commentId}`, { method: "DELETE" });
@@ -406,9 +427,10 @@ async function main() {
         const listAfter = await (await fetch(`${BASE}/api/posts`)).json().catch(() => null);
         const createdPost = listAfter?.posts?.find((p) => p.id === imagePost.data.id);
         const imageUrl = createdPost?.imageUrl ?? null;
-        check("帖子详情返回封面图 URL", typeof imageUrl === "string" && imageUrl.startsWith("/media/posts/"), String(imageUrl));
-        if (imageUrl) {
-          const media = await fetch(`${BASE}${imageUrl}`);
+        const postMediaPath = toLocalMediaPath(imageUrl);
+        check("帖子详情返回封面图 URL", typeof imageUrl === "string" && /\/media\/posts\//.test(postMediaPath ?? ""), String(imageUrl));
+        if (postMediaPath) {
+          const media = await fetch(`${BASE}${postMediaPath}`);
           check("帖子封面可访问且为图片", media.status === 200 && (media.headers.get("content-type") ?? "").includes("image/png"), `status=${media.status}`);
         }
       }

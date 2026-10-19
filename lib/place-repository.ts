@@ -1,3 +1,4 @@
+import { mediaUrl } from "@/lib/media";
 import type { AdminPlace, CategoryId, Place, PlaceStatus } from "@/lib/places";
 
 type PlaceRow = {
@@ -13,19 +14,19 @@ type PlaceRow = {
   category_id: CategoryId;
   featured: number;
   status: PlaceStatus;
-  image_url: string | null;
+  image_key: string | null;
 };
 
 const PLACE_SELECT = `
   SELECT p.id, p.slug, p.name, p.subtitle, p.description, p.longitude, p.latitude,
     p.district, p.address, p.category_id, p.featured, p.status,
     (
-      SELECT '/media/' || pi.object_key
+      SELECT pi.object_key
       FROM place_images pi
       WHERE pi.place_id = p.id
       ORDER BY pi.sort_order ASC, pi.created_at DESC
       LIMIT 1
-    ) AS image_url
+    ) AS image_key
   FROM places p`;
 
 function mapPlace(row: PlaceRow): AdminPlace {
@@ -42,7 +43,7 @@ function mapPlace(row: PlaceRow): AdminPlace {
     categoryId: row.category_id,
     featured: row.featured === 1,
     status: row.status,
-    ...(row.image_url ? { imageUrl: row.image_url } : {}),
+    ...(row.image_key ? { imageUrl: mediaUrl(row.image_key) } : {}),
   };
 }
 

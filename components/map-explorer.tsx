@@ -364,7 +364,9 @@ export function MapExplorer({ initialPlaces }: MapExplorerProps) {
   const positionDetailNode = useCallback((x: number, y: number) => {
     const node = activityDetailRef.current ?? placeDetailRef.current;
     if (!node) return false;
-    // 卡片以锚点为中心水平居中、底部位于锚点上方 20px；再夹取到视口内。
+    // 卡片以锚点为中心水平居中；垂直方向优先放在锚点上方 20px（底部贴锚点），
+    // 上方空间不足时翻到锚点下方 20px（顶部贴锚点），绝不覆盖锚点本身；
+    // 最后统一夹取到视口内，保证卡片完整可见。
     // 之前只做 translate 不夹取，深链打开时卡片会整体跑到屏幕左上角外（实测 top=-287、left=-38）。
     const margin = 10;
     const width = node.offsetWidth;
@@ -372,7 +374,10 @@ export function MapExplorer({ initialPlaces }: MapExplorerProps) {
     const maxLeft = Math.max(margin, window.innerWidth - width - margin);
     const maxTop = Math.max(margin, window.innerHeight - height - margin);
     const left = Math.min(Math.max(x - width / 2, margin), maxLeft);
-    const top = Math.min(Math.max(y - 20 - height, margin), maxTop);
+    const aboveTop = y - 20 - height;
+    const top = aboveTop >= margin
+      ? Math.min(aboveTop, maxTop)
+      : Math.min(Math.max(y + 20, margin), maxTop);
     node.style.transform = `translate3d(${left}px, ${top}px, 0)`;
     return true;
   }, []);
@@ -1429,6 +1434,11 @@ export function MapExplorer({ initialPlaces }: MapExplorerProps) {
         onSelectActivity={(id) => {
           const activity = activities.find((item) => item.id === id) ?? myActivities.find((item) => item.id === id);
           if (activity) { setNotificationsOpen(false); focusActivity(activity); }
+        }}
+        onSelectPost={(postId) => {
+          // 帖子通知跳转后离开地图页，直接整页导航到帖子详情。
+          setNotificationsOpen(false);
+          window.location.assign(`/post/${encodeURIComponent(postId)}`);
         }}
       />}
 

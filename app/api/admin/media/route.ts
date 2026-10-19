@@ -1,5 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { isSameOrigin, mutationAllowed, requireAdmin } from "@/lib/admin-auth";
+import { mediaUrl } from "@/lib/media";
 import { errorLogLine } from "@/lib/http";
 import {
   inspectUploadedImage,
@@ -70,5 +71,5 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "图片关联失败，已回滚上传" }, { status: 500 });
   }
 
-  return NextResponse.json({ imageUrl: `/media/${key}` }, { status: 201 });
+  return NextResponse.json({ imageUrl: mediaUrl(key) }, { status: 201 });
 }

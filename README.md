@@ -15,6 +15,8 @@
 - 社区发帖：话题筛选、帖子详情、评论、可选封面图，登录后发帖；帖子/评论可被举报与管理员隐藏
 - 用户资料修改、退出登录和账号注销
 - 管理员活动下架、留言隐藏、账号停用、举报处理和审计日志
+- 图片经 R2 自定义域 `media.atlas.sololeveling.top` 直出（`lib/media.ts`，可回退 `/media` 路由）
+- ISR 增量缓存（R2 + D1 tag cache + DO 队列）：地点 300s / 活动 120s / 帖子 60s
 - Cloudflare Rate Limiting、同源校验、HttpOnly 会话、PBKDF2 密码派生
 - 健康检查、Bun 单元测试、GitHub Actions 与 D1/R2 备份脚本
 

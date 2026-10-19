@@ -56,7 +56,7 @@ export type CommunityPost = {
   title: string;
   body: string;
   topic: PostTopic;
-  imageUrl: string | null; // 形如 /media/posts/...
+  imageUrl: string | null; // 生产为 CDN 绝对地址（https://media.atlas.sololeveling.top/posts/...），本地为 /media/posts/...
   author: PostAuthor;
   commentCount: number;
   isMine: boolean;

@@ -9,6 +9,9 @@
   ],
   "compatibility_date": "2026-07-17",
   "compatibility_flags": ["nodejs_compat"],
+  "vars": {
+    "MEDIA_PUBLIC_BASE": "https://media.atlas.sololeveling.top"
+  },
   "assets": {
     "directory": ".open-next/assets",
     "binding": "ASSETS"

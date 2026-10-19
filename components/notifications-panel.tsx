@@ -3,7 +3,14 @@
 import { useCallback, useEffect, useState } from "react";
 import type { CommunityNotification } from "@/lib/community-types";
 
-export function NotificationsPanel({ onClose, onSelectActivity }: { onClose: () => void; onSelectActivity: (id: string) => void }) {
+type NotificationsPanelProps = {
+  onClose: () => void;
+  onSelectActivity: (id: string) => void;
+  /** 帖子评论通知：交给地图页决定如何离开当前视图（通常是跳 /post/<postId>）。 */
+  onSelectPost?: (postId: string) => void;
+};
+
+export function NotificationsPanel({ onClose, onSelectActivity, onSelectPost }: NotificationsPanelProps) {
   const [notifications, setNotifications] = useState<CommunityNotification[]>([]);
   const [error, setError] = useState("");
   const load = useCallback(async () => {
@@ -16,14 +23,36 @@ export function NotificationsPanel({ onClose, onSelectActivity }: { onClose: () 
     }
   }, []);
   useEffect(() => { void load().catch((caught) => setError(caught instanceof Error ? caught.message : "消息加载失败")); }, [load]);
+
+  // 帖子评论通知带 postId 时可跳转（没有 postId 则保持原样：点了不跳）。
+  // 活动通知仍沿用原有 activityId → onSelectActivity 逻辑，行为不变。
+  const openNotification = useCallback((item: CommunityNotification) => {
+    if (item.type === "post_comment" && item.postId) {
+      if (onSelectPost) onSelectPost(item.postId);
+      else window.location.assign(`/post/${encodeURIComponent(item.postId)}`);
+      return;
+    }
+    if (item.activityId) onSelectActivity(item.activityId);
+  }, [onSelectActivity, onSelectPost]);
+
   return <section className="notifications-panel" aria-label="消息中心">
     <header><div><small>INBOX</small><h2>消息中心</h2></div><button type="button" onClick={onClose}>×</button></header>
     <div className="notifications-list">
       {error && <p>{error}</p>}
       {!error && notifications.length === 0 && <p>暂时没有新消息。</p>}
-      {notifications.map((item) => <button type="button" key={item.id} className={!item.readAt ? "unread" : ""} onClick={() => item.activityId && onSelectActivity(item.activityId)}>
-        <span><b>{item.title}</b><small>{new Date(item.createdAt).toLocaleString("zh-CN")}</small></span><p>{item.body}</p>
-      </button>)}
+      {notifications.map((item) => {
+        const postId = item.type === "post_comment" ? item.postId : null;
+        return <button
+          type="button"
+          key={item.id}
+          className={!item.readAt ? "unread" : ""}
+          data-post-id={postId ?? undefined}
+          title={postId ? "打开帖子详情" : undefined}
+          onClick={() => openNotification(item)}
+        >
+          <span><b>{item.title}</b><small>{new Date(item.createdAt).toLocaleString("zh-CN")}</small></span><p>{item.body}</p>
+        </button>;
+      })}
     </div>
   </section>;
 }
