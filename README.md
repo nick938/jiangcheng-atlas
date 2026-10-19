@@ -46,6 +46,12 @@ ADMIN_SESSION_SECRET=随机长字符串
 USER_AUTH_SECRET=随机长字符串
 ```
 
+本地开发建议再加一行，把生产 CDN 关掉、图片走 Worker 的 `/media` 路由（上传后立即可见）：
+
+```dotenv
+MEDIA_PUBLIC_BASE=
+```
+
 微信登录为可选能力，获得审核通过的网站应用后再增加：
 
 ```dotenv

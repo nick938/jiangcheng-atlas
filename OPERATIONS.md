@@ -84,7 +84,7 @@ bunx wrangler d1 execute jiangcheng-atlas-db --remote --command "CREATE TABLE IF
 
 ## R2 图片直出（已启用）
 
-图片走 R2 自定义域 `media.atlas.sololeveling.top`（已绑定 `jiangcheng-atlas-media`），`lib/media.ts` 在生产构建返回 CDN 绝对地址；`app/media/[...key]/route.ts` 保留为回退（本地开发、未绑定域名、或需要经过 Worker 校验的对象）。要临时关闭 CDN，把 `lib/site.ts` 的 `MEDIA_PUBLIC_BASE` 置空即可整体退回 `/media`。
+图片走 R2 自定义域 `media.atlas.sololeveling.top`（已绑定 `jiangcheng-atlas-media`），基地址来自 `wrangler.jsonc` 的 `vars.MEDIA_PUBLIC_BASE`，`lib/media.ts` 据此生成 URL；`app/media/[...key]/route.ts` 保留为回退（本地开发、未绑定域名、或需要经过 Worker 校验的对象）。本地 `.dev.vars` 里写 `MEDIA_PUBLIC_BASE=`（空串）即整体退回 `/media`；线上要临时关闭 CDN，改掉 `wrangler.jsonc` 的 vars 并重新部署。
 
 历史配置步骤（换域名/重建环境时参考）：
 
