@@ -15,6 +15,11 @@ import { resolveViewer } from "@/app/community/viewer";
 // 帖子详情按需缓存，发帖/编辑/隐藏会通过 revalidatePath 立即失效。
 export const revalidate = 60;
 
+// 同 /place：动态段启用 ISR；隐藏/编辑帖子时通过 revalidatePath 立即失效。
+export function generateStaticParams() {
+  return [];
+}
+
 type PostPageProps = { params: Promise<{ id: string }> };
 
 type PostData = { post: CommunityPost; comments: PostComment[]; viewer: CommunityUser | null };

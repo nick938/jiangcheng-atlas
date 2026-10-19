@@ -12,6 +12,12 @@ import { SITE_NAME, SITE_OG_IMAGE, SITE_URL, placeUrl } from "@/lib/site";
 // 已启用 R2 增量缓存：按需生成后缓存，降低爬虫与分享链接带来的 D1 读放大。
 export const revalidate = 300;
 
+// 空数组表示构建期不预渲染任何 slug，但让动态段启用 ISR：
+// 首次请求按需生成并写入 R2 增量缓存，之后由 revalidate 与 revalidatePath 控制刷新。
+export function generateStaticParams() {
+  return [];
+}
+
 type PlacePageProps = { params: Promise<{ slug: string }> };
 
 /**

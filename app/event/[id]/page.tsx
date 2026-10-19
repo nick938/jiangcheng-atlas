@@ -13,6 +13,11 @@ import { SITE_NAME, SITE_OG_IMAGE, SITE_URL, activityUrl } from "@/lib/site";
 // 活动信息会随报名/编辑变化，缓存时间短一些。
 export const revalidate = 120;
 
+// 同 /place：让动态段启用 ISR，按需生成后进 R2 缓存。
+export function generateStaticParams() {
+  return [];
+}
+
 type EventPageProps = { params: Promise<{ id: string }> };
 
 async function loadActivity(id: string): Promise<CityActivity | null> {
