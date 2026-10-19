@@ -220,6 +220,29 @@ async function main() {
       try {
         const mapReady = await page.cdp.waitFor("Boolean(document.querySelector('.maplibregl-canvas'))", 25000);
         report(mapReady, "地图实例已创建（WebGL canvas）", "");
+        const mapSize = await page.cdp.evaluate(`(() => {
+          const canvas = document.querySelector(".maplibregl-canvas");
+          const box = document.querySelector(".atlas-map");
+          return {
+            canvasW: canvas?.clientWidth ?? 0, canvasH: canvas?.clientHeight ?? 0,
+            boxW: box?.clientWidth ?? 0, boxH: box?.clientHeight ?? 0,
+            innerW: window.innerWidth, innerH: window.innerHeight,
+          };
+        })()`);
+        // maplibre-gl.css 的 .maplibregl-map{position:relative} 曾把容器压成 0 高：canvas 会退回默认 300px
+        report(
+          mapSize.boxH > 200 && mapSize.canvasH > 200 && mapSize.canvasW > 300,
+          "地图容器铺满视口（canvas 非默认 300 高）",
+          JSON.stringify(mapSize),
+        );
+        // MapLibre 在 Web Worker 里拉样式与瓦片，主线程 performance entries 看不到；
+        // 用 attribution 控件证明样式解析成功（无头 SwiftShader 不保证截图里能看到瓦片画面）。
+        // 样式是异步加载的：等 attribution（来自 style JSON）出现，证明远端样式真正解析成功
+        const styleLoaded = await page.cdp.waitFor(
+          "document.body.textContent.includes('OpenFreeMap')",
+          20000,
+        );
+        report(styleLoaded, "地图样式已加载（attribution 出现）", "");
         await page.cdp.evaluate("new Promise((resolve) => setTimeout(resolve, 800))");
         const info = await page.cdp.evaluate(`(() => ({
           text: document.body.innerText.slice(0, 20000),

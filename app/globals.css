@@ -30,7 +30,9 @@ button { color: inherit; }
 button:focus-visible, input:focus-visible { outline: 3px solid rgba(69, 196, 134, 0.48); outline-offset: 2px; }
 
 .atlas-shell { position: fixed; inset: 0; overflow: hidden; background: #0e1514; }
-.atlas-map { position: absolute; inset: 0; }
+/* 选择器要压过 maplibre-gl.css 的 .maplibregl-map{position:relative}（该 CSS 从 app/page.tsx 引入，
+   与 globals.css 的先后顺序会变），否则容器高度塌陷为 0、地图不可见。 */
+.atlas-shell .atlas-map { position: absolute; inset: 0; }
 .map-wash {
   position: absolute;
   inset: 0;
