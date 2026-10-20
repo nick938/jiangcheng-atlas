@@ -30,6 +30,8 @@ function arg(name, fallback = null) {
 const BASE = (arg("base", process.env.BASE_URL ?? "http://localhost:3000")).replace(/\/$/, "");
 const SHOT_DIR = arg("screenshot", null);
 const RUN = Date.now().toString(36);
+/** --lite：用 --disable-gpu 启动（模拟无 WebGL 设备），只跑精简模式兜底用例 */
+const LITE = argv.includes("--lite");
 const BENIGN_CONSOLE = [/Download the React DevTools/, /\[HMR\]/, /\[Fast Refresh\]/, /Download React DevTools/];
 
 let failed = 0;
@@ -116,7 +118,7 @@ async function main() {
   const chrome = spawn(CHROME, [
     "--headless=new",
     "--no-sandbox",
-    "--enable-unsafe-swiftshader",
+    ...(LITE ? ["--disable-gpu"] : ["--enable-unsafe-swiftshader"]),
     `--remote-debugging-port=${port}`,
     `--user-data-dir=${profile}`,
     "--window-size=390,844",
@@ -213,6 +215,66 @@ async function main() {
   try {
     await waitForDevtools(port);
 
+    if (LITE) {
+      // 无 WebGL 设备：只验证精简模式兜底选点链路
+      console.log("Lite 模式（禁用 GPU）");
+      const page = await openPage(`${BASE}/`);
+      try {
+        await page.cdp.waitFor("document.body.innerText.includes('精简模式') || Boolean(document.querySelector('.atlas-map canvas'))", 25000);
+        const text = await page.cdp.evaluate("document.body.innerText.slice(0, 20000)");
+        report(text.includes("精简模式"), "无 WebGL 时进入精简模式", text.includes("这一页暂时打不开") ? "却出现错误页" : "");
+        report(!text.includes("这一页暂时打不开"), "精简模式没有落入错误页", "");
+        const opened = await page.cdp.evaluate(`(() => { const button = document.querySelector(".create-event-link"); if (!button) return false; button.click(); return true; })()`);
+        report(opened, "精简模式可打开创建面板", "");
+        const picked = await page.cdp.evaluate(`(() => {
+          const select = document.querySelector('[data-testid="draft-place-select"]');
+          if (!select) return null;
+          const option = [...select.options].find((item) => item.value && item.value !== "__center");
+          if (!option) return null;
+          select.value = option.value;
+          select.dispatchEvent(new Event("change", { bubbles: true }));
+          return { value: option.value, label: (option.textContent ?? "").trim() };
+        })()`);
+        await page.cdp.evaluate("new Promise((resolve) => setTimeout(resolve, 500))");
+        const afterPick = await page.cdp.evaluate(`(() => ({
+          text: document.body.innerText.slice(0, 20000),
+          meetingName: document.querySelector('input[name="meetingName"]')?.value ?? "",
+          hasManualInputs: Boolean(document.querySelector('[data-testid="draft-longitude"]') && document.querySelector('[data-testid="draft-latitude"]')),
+        }))()`);
+        report(Boolean(picked), "精简模式提供地点下拉", JSON.stringify(picked));
+        report(afterPick.text.includes("集合位置已选择"), "选择地点后标记为已选择", "");
+        report(
+          afterPick.meetingName.trim().length > 0 && (picked?.label ?? "").includes(afterPick.meetingName.trim()),
+          "选择地点自动带入集合地点名",
+          `input=${afterPick.meetingName}`,
+        );
+        report(afterPick.hasManualInputs, "精简模式提供手填经纬度", "");
+        const applied = await page.cdp.evaluate(`(() => {
+          const lon = document.querySelector('[data-testid="draft-longitude"]');
+          const lat = document.querySelector('[data-testid="draft-latitude"]');
+          const button = document.querySelector('[data-testid="apply-coordinates"]');
+          if (!lon || !lat || !button) return false;
+          lon.value = "114.3020";
+          lat.value = "30.6010";
+          lon.dispatchEvent(new Event("input", { bubbles: true }));
+          lat.dispatchEvent(new Event("input", { bubbles: true }));
+          button.click();
+          return true;
+        })()`);
+        await page.cdp.evaluate("new Promise((resolve) => setTimeout(resolve, 500))");
+        const manualText = await page.cdp.evaluate("document.body.innerText.slice(0, 20000)");
+        report(applied && (manualText.includes("集合位置已选择") || manualText.includes("已更新")), "手填坐标可应用", "");
+        const problems = collectProblems(page.cdp);
+        report(problems.length === 0, "精简模式无控制台错误", problems.slice(0, 3).join(" | "));
+        if (SHOT_DIR) {
+          const shot = await page.cdp.send("Page.captureScreenshot", { format: "png" });
+          writeFileSync(join(SHOT_DIR, "home-lite.png"), Buffer.from(shot.data, "base64"));
+        }
+      } finally {
+        await page.close();
+      }
+    } else {
+
     // 1) 首页：地图 + 创建面板
     console.log("1) 地图首页");
     {
@@ -263,6 +325,89 @@ async function main() {
         report(panelVisible, "点击「创建差事」打开面板", "");
         const notice = await page.cdp.evaluate("document.body.innerText.includes('集合位置')");
         report(notice, "创建面板提示地图选点", "");
+
+        // 用大一点的视口做选点交互（避免创建面板遮住要点的地图区域）
+        await page.cdp.send("Emulation.setDeviceMetricsOverride", { width: 1200, height: 900, deviceScaleFactor: 1, mobile: false });
+        await page.cdp.evaluate("new Promise((resolve) => setTimeout(resolve, 700))");
+        // 选一个真正落在 .atlas-map 上、且没有被浮层挡住的点（生产上固定坐标会被提示条/面板吃掉）
+        const clickTarget = await page.cdp.evaluate(`(() => {
+          const box = document.querySelector(".atlas-map")?.getBoundingClientRect();
+          if (!box) return null;
+          const candidates = [
+            [box.left + box.width * 0.35, box.top + box.height * 0.55],
+            [box.left + box.width * 0.3, box.top + box.height * 0.35],
+            [box.left + box.width * 0.5, box.top + box.height * 0.3],
+            [box.left + box.width * 0.4, box.top + box.height * 0.7],
+          ];
+          for (const [x, y] of candidates) {
+            const el = document.elementFromPoint(x, y);
+            if (el && (el.tagName === "CANVAS" || el.closest(".atlas-map"))) {
+              return { x: Math.round(x), y: Math.round(y), hit: String(el.className || el.tagName) };
+            }
+          }
+          return null;
+        })()`);
+        let markerAppeared = false;
+        if (clickTarget) {
+          for (let attempt = 1; attempt <= 3 && !markerAppeared; attempt += 1) {
+            await page.cdp.send("Input.dispatchMouseEvent", { type: "mousePressed", x: clickTarget.x, y: clickTarget.y, button: "left", buttons: 1, clickCount: 1 });
+            await page.cdp.send("Input.dispatchMouseEvent", { type: "mouseReleased", x: clickTarget.x, y: clickTarget.y, button: "left", buttons: 0, clickCount: 1 });
+            markerAppeared = await page.cdp.waitFor("Boolean(document.querySelector('.draft-location-marker'))", 4000);
+            if (!markerAppeared) await page.cdp.evaluate("new Promise((resolve) => setTimeout(resolve, 300))");
+          }
+        }
+        report(markerAppeared, "地图点击后出现集合旗标", JSON.stringify(clickTarget));
+        const pickedState = await page.cdp.evaluate("document.body.innerText.includes('集合位置已选择')");
+        report(pickedState, "创建面板标记「集合位置已选择」", "");
+
+        // 拖拽旗标微调：位置或提示发生变化即视为成功
+        const markerRect = await page.cdp.evaluate(`(() => {
+          const el = document.querySelector(".draft-location-marker");
+          if (!el) return null;
+          const rect = el.getBoundingClientRect();
+          return { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2, transform: el.style.transform };
+        })()`);
+        if (markerRect) {
+          const startX = Math.round(markerRect.x);
+          const startY = Math.round(markerRect.y);
+          await page.cdp.send("Input.dispatchMouseEvent", { type: "mousePressed", x: startX, y: startY, button: "left", buttons: 1, clickCount: 1 });
+          for (let step = 1; step <= 5; step += 1) {
+            await page.cdp.send("Input.dispatchMouseEvent", {
+              type: "mouseMoved", x: startX + step * 14, y: startY + step * 9, button: "left", buttons: 1,
+            });
+          }
+          await page.cdp.send("Input.dispatchMouseEvent", { type: "mouseReleased", x: startX + 70, y: startY + 45, button: "left", buttons: 0, clickCount: 1 });
+          await page.cdp.evaluate("new Promise((resolve) => setTimeout(resolve, 500))");
+          const dragResult = await page.cdp.evaluate(`(() => ({
+            transform: document.querySelector(".draft-location-marker")?.style.transform ?? "",
+            text: document.body.innerText.slice(0, 20000),
+          }))()`);
+          report(
+            dragResult.transform !== markerRect.transform || dragResult.text.includes("集合位置已更新"),
+            "旗标可拖拽微调",
+            `before=${markerRect.transform} after=${dragResult.transform}`,
+          );
+        } else {
+          report(false, "旗标可拖拽微调", "找不到 .draft-location-marker");
+        }
+
+        // 常态显示的「从已收录地点选择」下拉：选一个地点，坐标与集合地点名都应被带入
+        const placePick = await page.cdp.evaluate(`(() => {
+          const select = document.querySelector('[data-testid="draft-place-select"]');
+          if (!select) return null;
+          const option = [...select.options].find((item) => item.value && item.value !== "__center");
+          if (!option) return null;
+          select.value = option.value;
+          select.dispatchEvent(new Event("change", { bubbles: true }));
+          return { value: option.value, label: (option.textContent ?? "").trim() };
+        })()`);
+        await page.cdp.evaluate("new Promise((resolve) => setTimeout(resolve, 500))");
+        const meetingNameValue = await page.cdp.evaluate(`document.querySelector('input[name="meetingName"]')?.value ?? ""`);
+        report(
+          Boolean(placePick) && meetingNameValue.trim().length > 0 && (placePick?.label ?? "").includes(meetingNameValue.trim()),
+          "从地点下拉选择会带入坐标与集合地点名",
+          `option=${placePick?.label ?? "<无>"} input=${meetingNameValue}`,
+        );
         if (SHOT_DIR) {
           const shot = await page.cdp.send("Page.captureScreenshot", { format: "png" });
           writeFileSync(join(SHOT_DIR, "home-map.png"), Buffer.from(shot.data, "base64"));
@@ -320,11 +465,22 @@ async function main() {
         report(ready, "社区列表渲染", "");
         const problems = collectProblems(page.cdp);
         report(problems.length === 0, "社区列表无控制台错误", problems.slice(0, 3).join(" | "));
-        const postHref = await page.cdp.evaluate(`(() => {
-          const link = document.querySelector('a[href^="/post/"]');
-          return link ? link.getAttribute('href') : null;
-        })()`);
-        report(Boolean(postHref), "列表含帖子链接", String(postHref));
+        // 生产环境可能还没有任何帖子：先探一下接口，空态时跳过帖子详情链路（避免误报）
+        const feedCount = await page.cdp.evaluate(`fetch("/api/posts?limit=1", { cache: "no-store" })
+          .then((response) => response.json())
+          .then((payload) => (Array.isArray(payload.posts) ? payload.posts.length : -1))
+          .catch(() => -1)`);
+        let postHref = null;
+        if (feedCount === 0) {
+          const emptyText = await page.cdp.evaluate("document.body.innerText.slice(0, 20000)");
+          report(/还没有|第一帖|暂无|空/.test(emptyText), "社区空态正常（当前无帖子，跳过帖子详情链路）", "");
+        } else {
+          postHref = await page.cdp.evaluate(`(() => {
+            const link = document.querySelector('a[href^="/post/"]');
+            return link ? link.getAttribute('href') : null;
+          })()`);
+          report(Boolean(postHref), "列表含帖子链接", String(postHref));
+        }
         if (SHOT_DIR) {
           const shot = await page.cdp.send("Page.captureScreenshot", { format: "png" });
           writeFileSync(join(SHOT_DIR, "community-list.png"), Buffer.from(shot.data, "base64"));
@@ -357,6 +513,7 @@ async function main() {
       } finally {
         await page.close();
       }
+    }
     }
   } catch (error) {
     report(false, "浏览器检查运行", String(error));

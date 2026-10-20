@@ -99,3 +99,17 @@
   2. `app/page.tsx` 引入 maplibre-gl.css 后 `.maplibregl-map{position:relative}` 压过 `.atlas-map`，地图容器高度塌陷为 0（canvas 退成 500×300）→ 选择器改为 `.atlas-shell .atlas-map`，并在浏览器 E2E 增加"容器铺满视口 + 样式 attribution 出现"断言。
 - **业务流程文档**：新增 `docs/business-flows.md`（235 行，含角色权限、15 张表、11 条路由渲染方式、9 条核心流程、验证矩阵）。
 - **上线版本**：`a7bd9085-2b4c-4ad8-bf52-de85243517c5`；生产冒烟 21/21（含 CDN 校验）、ISR 第二次 `x-nextjs-cache: HIT`、`/api/notifications` 未登录 401、migration 0013 已应用。
+
+
+## 11. 第四轮：创建活动「选地址」交互改造（2026-10-20）
+
+- **可拖拽旗标**：`draft-location` 的 GeoJSON source/layer 全部替换为 `maplibregl.Marker({ draggable: true })`（`.draft-location-marker`，视觉沿用 `markerSvg("event")`）；拖动结束更新坐标并提示「集合位置已更新」。
+- **自动带出附近地点名**：新增 `nearestPlaceWithin()`（阈值 0.025°）；点选/拖拽后若「集合地点」输入框未被用户手改，自动填入纯地点名；`meetingNameEditedRef` 保证用户手改后不再覆盖。
+- **地点下拉（常态可用）**：面板内「从已收录地点选择」+「使用武汉市中心」；选中即带入坐标与集合地点名。
+- **无 WebGL 兜底**：`webglUnavailable || !mapReady` 时渲染手填经纬度 + 「应用坐标」+ 说明文案，精简模式下也能完整发布活动。
+- **提交校验**：客户端与 API 都校验经度 113.9–114.8 / 纬度 30.2–30.9。
+- **验证**：
+  - 本地 dev / preview：`e2e-browser` 正常模式新增 4 项断言全绿（点击出旗标、状态、拖拽 transform 位移、下拉带名）；`--lite` 9/9 全绿；`e2e-local` 61/61；smoke 16/16；`bun test` 68 pass；tsc/lint 通过。
+  - 生产（`https://atlas.sololeveling.top`，只读）：smoke **21/21**（含 CDN）；`e2e-browser` 正常模式 **0 失败**（含地图点击出旗标、拖拽、下拉带名）；`--lite` **0 失败**（精简模式 9 项）。
+- **上线版本**：`9692b82e-83ee-40a4-b67c-2d0ed5806336`。
+- 说明：生产目前 0 篇帖子，浏览器脚本在社区空态时改为跳过帖子详情链路（不再误报「列表含帖子链接」）。

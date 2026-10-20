@@ -189,15 +189,31 @@ function toActivityFeatureCollection(activities: CityActivity[]) {
   };
 }
 
-function toDraftLocationFeatureCollection(location: [number, number] | null) {
-  return {
-    type: "FeatureCollection" as const,
-    features: location ? [{
-      type: "Feature" as const,
-      geometry: { type: "Point" as const, coordinates: location },
-      properties: { kind: "draft-location" },
-    }] : [],
-  };
+/** 集合位置的允许范围（武汉），客户端先拦一道，避免把明显离谱的坐标发到服务端。 */
+const DRAFT_LONGITUDE_RANGE = [113.9, 114.8] as const;
+const DRAFT_LATITUDE_RANGE = [30.2, 30.9] as const;
+const WUHAN_CENTER: [number, number] = [114.3162, 30.5811];
+/** 选点后判定「靠近某个已收录地点」的阈值（单位与下面的近似平面距离一致）。 */
+const DRAFT_PLACE_THRESHOLD = 0.025;
+/** 「从已收录地点选择」下拉里「使用武汉市中心」的哨兵值。 */
+const DRAFT_CENTER_OPTION = "__center";
+
+function isWithinWuhan(longitude: number, latitude: number) {
+  return longitude >= DRAFT_LONGITUDE_RANGE[0] && longitude <= DRAFT_LONGITUDE_RANGE[1]
+    && latitude >= DRAFT_LATITUDE_RANGE[0] && latitude <= DRAFT_LATITUDE_RANGE[1];
+}
+
+/** 复用原先描述文案里的近似平面距离，找出阈值内最近的一个已收录地点。 */
+function nearestPlaceWithin(location: [number, number], places: Place[], threshold: number): Place | null {
+  let nearest: { place: Place; distance: number } | null = null;
+  for (const place of places) {
+    const distance = Math.hypot(
+      (place.longitude - location[0]) * Math.cos(location[1] * Math.PI / 180),
+      place.latitude - location[1],
+    );
+    if (!nearest || distance < nearest.distance) nearest = { place, distance };
+  }
+  return nearest && nearest.distance < threshold ? nearest.place : null;
 }
 
 function getCoreMapPadding() {
@@ -276,6 +292,12 @@ export function MapExplorer({ initialPlaces }: MapExplorerProps) {
   const mapStyleLoadedRef = useRef(false);
   const corePaddingRef = useRef<{ top: number; right: number; bottom: number; left: number } | null>(null);
   const accountTriggerRef = useRef<HTMLButtonElement>(null);
+  const draftMarkerRef = useRef<maplibregl.Marker | null>(null);
+  const meetingNameInputRef = useRef<HTMLInputElement>(null);
+  const meetingNameEditedRef = useRef(false);
+  const [pickedPlaceId, setPickedPlaceId] = useState("");
+  const manualLongitudeRef = useRef<HTMLInputElement>(null);
+  const manualLatitudeRef = useRef<HTMLInputElement>(null);
   const [webglUnavailable, setWebglUnavailable] = useState(false);
   const [currentTime, setCurrentTime] = useState(() => Date.now());
   const [places, setPlaces] = useState(initialPlaces);
@@ -324,19 +346,17 @@ export function MapExplorer({ initialPlaces }: MapExplorerProps) {
   const categoryActivities = categoryHasActivities ? activities : [];
   const categoryCount = categoryPlaces.length + categoryActivities.length;
   const activeCategoryMeta = explorerCategories.find((item) => item.id === activeCategory) ?? explorerCategories[0];
+  const pickingUnavailable = webglUnavailable || !mapReady;
   const draftLocationDescription = useMemo(() => {
-    if (!draftLocation) return "地图现在可以直接点击";
-    const nearest = places.reduce<{ place: Place; distance: number } | null>((result, place) => {
-      const distance = Math.hypot(
-        (place.longitude - draftLocation[0]) * Math.cos(draftLocation[1] * Math.PI / 180),
-        place.latitude - draftLocation[1],
-      );
-      return !result || distance < result.distance ? { place, distance } : result;
-    }, null);
-    return nearest && nearest.distance < 0.025
-      ? `靠近 ${nearest.place.name} · 点击地图可调整`
-      : "集合旗标已显示在地图上 · 点击地图可调整";
-  }, [draftLocation, places]);
+    if (!draftLocation) {
+      return pickingUnavailable ? "请用下面的方式选择集合位置" : "地图现在可以直接点击";
+    }
+    const nearest = nearestPlaceWithin(draftLocation, places, DRAFT_PLACE_THRESHOLD);
+    if (!nearest) return "集合旗标已显示在地图上 · 点击地图可调整";
+    return meetingNameEditedRef.current
+      ? `靠近 ${nearest.name} · 点击地图可调整`
+      : `靠近 ${nearest.name}，已带入集合地点`;
+  }, [draftLocation, places, pickingUnavailable]);
 
   const switchMapView = useCallback((mode: MapViewMode) => {
     setMapViewMode(mode);
@@ -447,6 +467,32 @@ export function MapExplorer({ initialPlaces }: MapExplorerProps) {
     });
   }, [clearSelection, mapViewMode]);
 
+  /**
+   * 统一写入选点结果：
+   * - forceMeetingName 用于「从已收录地点选择」这种显式选择，直接覆盖集合地点名；
+   * - 其余（地图点击/拖拽/手填坐标）只在用户没手动编辑过输入框时，才带出最近地点名。
+   * 只有用户真的在输入框里打过字才会把 meetingNameEditedRef 置为 true（见 onInput），
+   * 这样「下拉选地点 → 再在地图上微调」仍然会跟着更新名称。
+   */
+  const applyDraftLocation = useCallback((
+    location: [number, number],
+    noticeText: string,
+    options?: { forceMeetingName?: string },
+  ) => {
+    setDraftLocation(location);
+    setNotice(noticeText);
+    const input = meetingNameInputRef.current;
+    if (!input) return;
+    if (options?.forceMeetingName) {
+      input.value = options.forceMeetingName;
+      return;
+    }
+    if (meetingNameEditedRef.current) return;
+    const nearest = nearestPlaceWithin(location, placesRef.current, DRAFT_PLACE_THRESHOLD);
+    // 只写纯地点名，方便和下拉选项文本对齐。
+    if (nearest) input.value = nearest.name;
+  }, []);
+
   const openCreatePanel = useCallback((location?: [number, number]) => {
     clearSelection();
     setCategoryListOpen(false);
@@ -454,9 +500,56 @@ export function MapExplorer({ initialPlaces }: MapExplorerProps) {
     setAccountMenuOpen(false);
     setActiveCategory("event");
     setDraftLocation(location ?? null);
+    setPickedPlaceId("");
+    // 每次重新打开面板都允许再次自动带出地点名（输入框本身会重新挂载）。
+    meetingNameEditedRef.current = false;
     setCreateOpen(true);
     setNotice(location ? "已带入集合位置，可以继续调整。" : "点击地图，选择差事的集合位置。");
   }, [clearSelection]);
+
+  /** 「从已收录地点选择」下拉：显式选择，直接使用该地点的坐标与名称。 */
+  const pickDraftPlace = (value: string) => {
+    setPickedPlaceId(value);
+    if (!value) return;
+    if (value === DRAFT_CENTER_OPTION) {
+      applyDraftLocation(WUHAN_CENTER, "已带入「武汉市中心」的位置", { forceMeetingName: "武汉市中心" });
+    } else {
+      const place = places.find((item) => item.id === value);
+      if (!place) return;
+      applyDraftLocation(
+        [place.longitude, place.latitude],
+        `已带入「${place.name}」的位置`,
+        { forceMeetingName: place.name },
+      );
+      mapRef.current?.flyTo({
+        center: [place.longitude, place.latitude],
+        zoom: 14.6,
+        duration: 700,
+        essential: true,
+        offset: [0, 150],
+      });
+    }
+    if (manualLongitudeRef.current) manualLongitudeRef.current.value = "";
+    if (manualLatitudeRef.current) manualLatitudeRef.current.value = "";
+  };
+
+  /** 无 WebGL 精简模式下用不上地图，改为手填经纬度。 */
+  const applyManualCoordinates = () => {
+    const rawLongitude = manualLongitudeRef.current?.value.trim() ?? "";
+    const rawLatitude = manualLatitudeRef.current?.value.trim() ?? "";
+    const longitude = Number(rawLongitude);
+    const latitude = Number(rawLatitude);
+    if (rawLongitude === "" || rawLatitude === "" || !Number.isFinite(longitude) || !Number.isFinite(latitude)) {
+      setNotice("请填写有效的经度和纬度。");
+      return;
+    }
+    if (!isWithinWuhan(longitude, latitude)) {
+      setNotice("集合位置需要在武汉范围内，请重新选择。");
+      return;
+    }
+    setPickedPlaceId("");
+    applyDraftLocation([longitude, latitude], `已使用手填坐标：${longitude}, ${latitude}`);
+  };
 
   const publishDraft = useCallback(async (draft: ActivityDraft) => {
     setBusy(true);
@@ -567,6 +660,10 @@ export function MapExplorer({ initialPlaces }: MapExplorerProps) {
     event.preventDefault();
     if (!draftLocation) {
       setNotice("请先点击地图，选择集合位置。");
+      return;
+    }
+    if (!isWithinWuhan(draftLocation[0], draftLocation[1])) {
+      setNotice("集合位置需要在武汉范围内，请重新选择。");
       return;
     }
     const form = new FormData(event.currentTarget);
@@ -766,7 +863,8 @@ export function MapExplorer({ initialPlaces }: MapExplorerProps) {
       // 没有 WebGL/WebGL2 的设备（旧手机、关掉硬件加速、企业策略浏览器）里构造函数会抛
       // "Failed to initialize WebGL"。以前这个异常会冒泡到 app/error.tsx，整页变成
       // 「这一页暂时打不开」；现在降级为精简模式，页头与列表仍然可用。
-      console.error("Map initialization failed, falling back to lite mode.", error);
+      // 这是已处理的环境降级（不是缺陷），因此用 warn 而不是 error 记录。
+      console.warn("Map initialization failed, falling back to lite mode.", error);
       setWebglUnavailable(true);
       setMapError(true);
       return;
@@ -880,32 +978,8 @@ export function MapExplorer({ initialPlaces }: MapExplorerProps) {
           "icon-ignore-placement": true,
         },
       });
-      map.addSource("draft-location", {
-        type: "geojson",
-        data: toDraftLocationFeatureCollection(null),
-      });
-      map.addLayer({
-        id: "draft-location-halo",
-        type: "circle",
-        source: "draft-location",
-        paint: {
-          "circle-radius": 23,
-          "circle-color": "rgba(216, 255, 62, .34)",
-          "circle-stroke-color": "#101816",
-          "circle-stroke-width": 3,
-        },
-      });
-      map.addLayer({
-        id: "draft-location-icon",
-        type: "symbol",
-        source: "draft-location",
-        layout: {
-          "icon-image": "category-event",
-          "icon-size": 1.62,
-          "icon-allow-overlap": true,
-          "icon-ignore-placement": true,
-        },
-      });
+      // 选点旗标不再用 GeoJSON source/layer 绘制，改成可拖拽的 maplibregl.Marker（见下方 effect），
+      // 这样用户可以直接拖动旗标调整集合位置。
       map.on("click", "place-icons", (event) => {
         if (createOpenRef.current) return;
         const id = event.features?.[0]?.properties?.id as string | undefined;
@@ -970,6 +1044,8 @@ export function MapExplorer({ initialPlaces }: MapExplorerProps) {
     paddingQuery.addEventListener("change", handlePaddingChange);
     return () => {
       paddingQuery.removeEventListener("change", handlePaddingChange);
+      draftMarkerRef.current?.remove();
+      draftMarkerRef.current = null;
       map.remove();
       mapRef.current = null;
     };
@@ -998,19 +1074,43 @@ export function MapExplorer({ initialPlaces }: MapExplorerProps) {
     }
   }, [activities, categoryHasActivities, mapReady, selectedActivity]);
 
+  // 选点旗标：可拖拽 Marker。仅创建面板打开且已有坐标时存在，关闭面板/卸载即移除。
   useEffect(() => {
-    if (!mapReady) return;
-    const source = mapRef.current?.getSource("draft-location") as GeoJSONSource | undefined;
-    source?.setData(toDraftLocationFeatureCollection(createOpen ? draftLocation : null));
-  }, [createOpen, draftLocation, mapReady]);
+    const map = mapRef.current;
+    if (!map || !mapReady || !createOpen || !draftLocation) {
+      draftMarkerRef.current?.remove();
+      draftMarkerRef.current = null;
+      return;
+    }
+    let marker = draftMarkerRef.current;
+    if (!marker) {
+      const element = document.createElement("div");
+      element.className = "draft-location-marker";
+      element.setAttribute("aria-hidden", "true");
+      // 光晕 + 与原来 draft-location-icon 相同的 event 图标（同样的 markerSvg 与颜色）。
+      element.innerHTML = `<i></i>${markerSvg("event", EVENT_COLOR)}`;
+      marker = new maplibregl.Marker({ element, draggable: true, anchor: "center" })
+        .setLngLat(draftLocation)
+        .addTo(map);
+      marker.on("dragend", () => {
+        const position = marker?.getLngLat();
+        if (!position) return;
+        setPickedPlaceId("");
+        applyDraftLocation([position.lng, position.lat], "集合位置已更新，可以继续调整。");
+      });
+      draftMarkerRef.current = marker;
+    } else {
+      marker.setLngLat(draftLocation);
+    }
+  }, [applyDraftLocation, createOpen, draftLocation, mapReady]);
 
   useEffect(() => {
     const map = mapRef.current;
     if (!map || !mapReady || !createOpen) return;
     const canvas = map.getCanvas();
     const chooseLocation = (event: maplibregl.MapMouseEvent) => {
-      setDraftLocation([event.lngLat.lng, event.lngLat.lat]);
-      setNotice("集合位置已标记，可以继续填写并发布。");
+      setPickedPlaceId("");
+      applyDraftLocation([event.lngLat.lng, event.lngLat.lat], "集合位置已标记，可以继续填写并发布。");
     };
     canvas.classList.add("map-picking-location");
     canvas.style.cursor = "crosshair";
@@ -1020,7 +1120,7 @@ export function MapExplorer({ initialPlaces }: MapExplorerProps) {
       canvas.classList.remove("map-picking-location");
       canvas.style.cursor = "";
     };
-  }, [createOpen, mapReady]);
+  }, [applyDraftLocation, createOpen, mapReady]);
 
   useEffect(() => {
     const map = mapRef.current;
@@ -1383,11 +1483,59 @@ export function MapExplorer({ initialPlaces }: MapExplorerProps) {
             <button type="button" onClick={() => setCreateOpen(false)} aria-label="关闭创建面板">×</button>
           </header>
           <div className={draftLocation ? "create-location picked" : "create-location"}>
-            <i><CategoryPictogram id="event" /></i>
-            <span>
-              <b>{draftLocation ? "集合位置已选择" : "先在地图上点一个集合位置"}</b>
-              <small>{draftLocationDescription}</small>
-            </span>
+            <div className="create-location-status">
+              <i><CategoryPictogram id="event" /></i>
+              <span>
+                <b>{draftLocation ? "集合位置已选择" : "先在地图上点一个集合位置"}</b>
+                <small>{draftLocationDescription}</small>
+              </span>
+            </div>
+            <label className="create-place-picker">
+              <span>从已收录地点选择</span>
+              <select
+                data-testid="draft-place-select"
+                value={pickedPlaceId}
+                onChange={(event) => pickDraftPlace(event.target.value)}
+              >
+                <option value="">在地图上选点或从列表选择</option>
+                <option value={DRAFT_CENTER_OPTION}>使用武汉市中心</option>
+                {places.map((place) => (
+                  <option key={place.id} value={place.id}>{place.name} · {place.district}</option>
+                ))}
+              </select>
+            </label>
+            {pickingUnavailable && (
+              <div className="create-location-manual">
+                <p>当前设备不支持 WebGL，地图不可用；可用上面的方式选择集合位置。</p>
+                <div className="create-coordinate-row">
+                  <label>
+                    经度
+                    <input
+                      ref={manualLongitudeRef}
+                      data-testid="draft-longitude"
+                      type="number"
+                      step="0.0001"
+                      inputMode="decimal"
+                      placeholder="114.3162"
+                    />
+                  </label>
+                  <label>
+                    纬度
+                    <input
+                      ref={manualLatitudeRef}
+                      data-testid="draft-latitude"
+                      type="number"
+                      step="0.0001"
+                      inputMode="decimal"
+                      placeholder="30.5811"
+                    />
+                  </label>
+                  <button type="button" data-testid="apply-coordinates" onClick={applyManualCoordinates}>
+                    应用坐标
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
           <form onSubmit={submitCreate}>
             <div className="create-form-row">
@@ -1399,7 +1547,7 @@ export function MapExplorer({ initialPlaces }: MapExplorerProps) {
               <label>开始时间<input name="startsAt" type="datetime-local" defaultValue={defaultDateTime(24)} required /></label>
               <label>结束时间<input name="endsAt" type="datetime-local" defaultValue={defaultDateTime(26)} required /></label>
             </div>
-            <label>集合地点<input name="meetingName" minLength={2} maxLength={80} placeholder="例如：东湖绿道梨园入口" required /></label>
+            <label>集合地点<input ref={meetingNameInputRef} name="meetingName" minLength={2} maxLength={80} placeholder="例如：东湖绿道梨园入口" required onInput={() => { meetingNameEditedRef.current = true; }} /></label>
             <label className="create-image-upload">
               差事封面
               <span>上传一张现场或路线图片，让参加者更快认出活动</span>

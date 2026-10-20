@@ -116,6 +116,30 @@ places ──1:N── place_images ──▶ R2 对象键
 
 失败分支：未登录 401、非成员留言 403、重复报名/满员 409、编辑他人或已开始 409、内容违规由管理员下架（`moderation_status='hidden'` 后列表/详情/留言接口全部不可见）。✅ e2e-local 第 3 组（创建/满员容量/评论/未登录 401/日历 content-type/分享页）；✅ `tests/activity-validation.test.ts`、`tests/activity-format.test.ts`、`tests/calendar.test.ts`；✅ e2e-browser 深链与创建面板。
 
+#### 4.3.1 创建时的「集合位置」怎么选（地图可用 / 无 WebGL 两种模式）
+
+```
+地图可用（正常模式）
+ 点「创建差事 ＋」→ 面板出现，地图进入选点模式（canvas 十字光标 .map-picking-location）
+ 单击地图任意位置 → 写入 draftLocation，出现可拖拽旗标 .draft-location-marker（光晕 + event 图标）
+   dragend → 更新坐标并提示「集合位置已更新」，可反复微调
+ 邻近匹配 nearestPlaceWithin(阈值 0.025°)：
+   · 命中且「集合地点」输入框未被用户手改 → 自动填入纯地点名（如「东湖绿道」）
+   · 用户一旦手改（meetingNameEditedRef）→ 后续选点不再覆盖
+ 其他入口：面板内「从已收录地点选择」下拉（常态可用，含「使用武汉市中心」__center）
+ 提交前客户端校验经度 113.9–114.8 / 纬度 30.2–30.9，越界提示且不提交
+   ↓ 未登录 → 登录后带草稿继续；服务端再做一次同样的范围校验
+无 WebGL（精简模式，webglUnavailable || !mapReady）
+ 地图不可用但创建面板照常可用：
+   · 「从已收录地点选择」下拉（同上，选中即带入坐标+地点名）
+   · 手填经纬度（data-testid=draft-longitude / draft-latitude）+「应用坐标」（越界给提示）
+   · 说明文案「当前设备不支持 WebGL，地图不可用；可用上面的方式选择集合位置。」
+```
+
+测试钩子：`.draft-location-marker`、`[data-testid="draft-place-select"]`、`[data-testid="draft-longitude"]`、`[data-testid="draft-latitude"]`、`[data-testid="apply-coordinates"]`。
+
+✅ e2e-browser 第 1 组（地图点击出旗标 / 状态变为已选择 / 拖拽后 transform 变化 / 地点下拉带入坐标与名称）；✅ `node scripts/e2e-browser.mjs --lite`（精简模式 9 项：进入精简模式、下拉、自动带名、手填坐标应用）；生产域名上同样跑过这两组（只读，不产生数据）。
+
 ### 4.4 社区发帖
 
 - 发帖 `POST /api/posts`：同源 → 登录 → 用户限流 → `title` 4–60、`body` 10–3000、`topic ∈ chat/meetup/guide/food/photo/help`；带图走 multipart（`Content-Length ≤ 5MB+128KB`，魔数校验 JPEG/PNG/WebP/AVIF）→ key `posts/<id>/<uuid>.<ext>` 先写 R2、再写库（路由与仓储共用同一个 `id`），**写库失败删除对象回滚**。
@@ -230,6 +254,7 @@ bash scripts/cloudflare-setup.sh               # 只读预检（默认）
 3. 本地 preview **不执行 DO 队列**、Cache API 分支未生效：时间驱动 `revalidate` 与 `caches.default` 需在生产各验证一次。
 4. 失效触发点不全：管理员改地点最多 300s 生效；活动报名/评论/编辑靠 120s（如需即时可在对应接口加 `revalidatePath`）。
 5. `components/map-explorer.tsx` 仍 1600+ 行未拆分；Tailwind v4 仍安装但 0 工具类；详情卡锚点数学仍为「夹取 + 上下翻转」，是否需要完全不遮挡 POI 属视觉决策。
+   选点方面：**没有地址搜索/逆地理编码**（只能地图点选或从站内已收录地点下拉选，再由用户手填集合地点名）；无 WebGL 时已支持下拉 + 手填经纬度兜底，但手填行在 ≤760px 窄屏的按钮换行只做了 CSS 断点处理、未做真机验证。
 6. 监控告警责任人待填写（`OPERATIONS.md`），建议补 Cloudflare Notifications；后台治理列表各 200 条上限。
 7. 活动留言删除仅限本人（管理员走治理后台 `comment.hide`）；微信登录用户 `password_hash='oauth:wechat'`，无法自行设置密码。
 8. 备份为明文目录（需自行 `age` 加密后异地保存），恢复对生产库/桶必须显式 `--confirm`。
