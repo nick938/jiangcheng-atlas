@@ -145,9 +145,18 @@ bash scripts/restore-cloudflare.sh --dir backups/20260814T031248Z --r2 --confirm
 
 脚本会先校验 `manifest.sha256`，校验失败立即退出；对生产库或生产桶的写入必须显式 `--confirm`；临时库默认命名为 `jiangcheng-atlas-restore-<UTC 时间戳>`，演练后可用 `bunx wrangler d1 delete <库名>` 清理。恢复生产后立刻跑 `BASE_URL=https://atlas.sololeveling.top bash scripts/smoke.sh`。
 
+## 构建环境安全版本
+
+- `.node-version` 固定 Node.js `24.22.1`，Cloudflare Workers Builds 与 GitHub Actions 均读取此文件；Bun 保持 `1.3.6`。
+- Next.js 已升级到 `16.4.1`，锁文件包含 `sharp 0.35.5`。升级后需通过单测、类型检查、OpenNext 构建和本地 preview 冒烟测试。
+- Node 版本是构建工具版本，线上 Worker 运行时由 Cloudflare 维护。
+
 ## 监控
 
 - **已配置**：`.github/workflows/monitor.yml` 每 15 分钟（`workflow_dispatch` 可手动触发）检查 `https://atlas.sololeveling.top/api/health`，并附带 `/`、`/sitemap.xml`、`/robots.txt` 的 200 校验；失败时工作流变红，结果写入 run summary。GitHub 定时任务失败会通知仓库 watch 设置里勾选了 Actions 的人。
+- 监控使用 `node scripts/monitor.mjs`，每条路径最多尝试 4 次、间隔 5 秒、单次超时 20 秒；健康端点必须为 HTTP 200 且 JSON 的 `status` 为 `ok`，重定向也视为失败。某条路径失败后继续检查其余路径，最终仍失败则工作流退出 1。
+- 每次尝试记录 HTTP 状态、Cloudflare Ray ID、`cf-mitigated`、响应类型和失败响应片段，失败详情也写入 summary。403/challenge 优先查对应 Ray 的 Cloudflare 安全事件；503 优先查 Worker 的 `health_check_failed` 与 D1 状态。不要用跳过 WAF 或忽略失败来消除告警。
+- 原 shell 监控在 GitHub 默认 `bash -e` 下会在 curl 非零时提前退出，丢失错误详情；新脚本统一捕获网络/HTTP/JSON 错误。
 - 建议再在 Cloudflare Notifications 加一条 “Workers 错误率/请求失败” 告警作为双保险。
 - 告警责任人：**待填写**（当前为仓库维护者）；处理时限：15 分钟内确认，1 小时内给出结论。
 - `/api/health` 返回 `200 {"status":"ok"}` 表示 Worker 与 D1 可用，失败返回 503。Cloudflare Workers Observability 已启用，生产错误使用结构化事件名记录。
