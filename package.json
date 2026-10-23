@@ -20,7 +20,7 @@
     "assets:thumbs": "python3 scripts/generate-place-thumbnails.py"
   },
   "dependencies": {
-    "@opennextjs/cloudflare": "1.20.2",
+    "@opennextjs/cloudflare": "1.20.13",
     "gsap": "^3.15.0",
     "maplibre-gl": "^5.24.0",
     "next": "16.4.1",
@@ -38,7 +38,7 @@
     "oxlint-tsgolint": "7.0.2001",
     "tailwindcss": "^4",
     "typescript": "7.0.2",
-    "wrangler": "^4.111.0"
+    "wrangler": "4.152.0"
   },
   "ignoreScripts": [
     "sharp",

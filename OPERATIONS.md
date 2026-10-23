@@ -151,6 +151,9 @@ bash scripts/restore-cloudflare.sh --dir backups/20260814T031248Z --r2 --confirm
 - Next.js 已升级到 `16.4.1`，锁文件包含 `sharp 0.35.5`。升级后需通过单测、类型检查、OpenNext 构建和本地 preview 冒烟测试。
 - Node 版本是构建工具版本，线上 Worker 运行时由 Cloudflare 维护。
 
+- `wrangler.jsonc` 用 `secrets.required` 声明必需密钥名称，使 `wrangler types` 在本机与 CI 的无密钥环境生成一致类型；此配置不包含密钥值。
+- Next.js 16.4 将 preview props 拆为独立清单，OpenNext 同步固定为 `1.20.13`、Wrangler `4.152.0`；旧适配器构建虽通过，动态请求会因 `preview-props.json` 未内联而 500。
+
 ## 监控
 
 - **已配置**：`.github/workflows/monitor.yml` 每 15 分钟（`workflow_dispatch` 可手动触发）检查 `https://atlas.sololeveling.top/api/health`，并附带 `/`、`/sitemap.xml`、`/robots.txt` 的 200 校验；失败时工作流变红，结果写入 run summary。GitHub 定时任务失败会通知仓库 watch 设置里勾选了 Actions 的人。
