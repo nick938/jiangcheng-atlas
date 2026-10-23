@@ -98,7 +98,7 @@ bunx wrangler d1 execute jiangcheng-atlas-db --remote --command "CREATE TABLE IF
 
 - 应用层（`next.config.ts`）：`X-Content-Type-Options`、`X-Frame-Options`、`Referrer-Policy`、`Permissions-Policy`、`Strict-Transport-Security`。
 - CSP 目前是 **Report-Only**，与其他安全头一起由 `next.config.ts` 的 `headers()` 下发（`source: "/:path*"`）：`default-src 'self'`、`img-src 'self' data: blob: https://tiles.openfreemap.org https://commons.wikimedia.org https://upload.wikimedia.org`、`connect-src 'self' https://tiles.openfreemap.org`、`worker-src blob:`、`frame-ancestors 'none'`。浏览器只上报不拦截，观察一周无违规后可改成 `Content-Security-Policy` 并把 `script-src` 的 `'unsafe-inline'` 换成 nonce。
-- **为什么没有用 `proxy.ts`**：Next 16 起 Proxy（原 Middleware）默认运行在 Node.js runtime，且 Proxy 文件不允许设置 `runtime`（`node_modules/next/dist/docs/01-app/03-api-reference/03-file-conventions/proxy.md:223`）；而 `@opennextjs/cloudflare` 1.20.2 遇到 Node.js middleware 会直接终止构建（`dist/cli/build/build.js:66-69`，实测报 `Node.js middleware is not currently supported`）。没有 nonce 时静态响应头与 Proxy 等价，所以先放在 `next.config.ts`。将来要上 nonce：先确认适配器已支持 Node middleware（或改用 edge runtime），再把这段搬到 `proxy.ts` 并在响应头里带 nonce。
+- **响应头继续放在 `next.config.ts`**：目前不使用 nonce，静态响应头不需要 Proxy。旧版 OpenNext 1.20.2 不支持 Node.js middleware；现已随安全升级更新为 1.20.13。如后续需要 nonce，应按当时适配器的 Proxy 支持情况验证后再迁移。
 - HSTS 目前由应用层下发；**不要**再在 Cloudflare 边缘（SSL/TLS → Edge Certificates → HSTS）重复开启，二选一。
 - `next.config.ts` 的 `headers()` **不覆盖** Workers 静态资源（`/_next/static/*`、`public/` 文件）。需要给静态资源加缓存头时用 `public/_headers`：
 
@@ -159,6 +159,7 @@ bash scripts/restore-cloudflare.sh --dir backups/20260814T031248Z --r2 --confirm
 - **已配置**：`.github/workflows/monitor.yml` 每 15 分钟（`workflow_dispatch` 可手动触发）检查 `https://atlas.sololeveling.top/api/health`，并附带 `/`、`/sitemap.xml`、`/robots.txt` 的 200 校验；失败时工作流变红，结果写入 run summary。GitHub 定时任务失败会通知仓库 watch 设置里勾选了 Actions 的人。
 - 监控使用 `node scripts/monitor.mjs`，每条路径最多尝试 4 次、间隔 5 秒、单次超时 20 秒；健康端点必须为 HTTP 200 且 JSON 的 `status` 为 `ok`，重定向也视为失败。某条路径失败后继续检查其余路径，最终仍失败则工作流退出 1。
 - 每次尝试记录 HTTP 状态、Cloudflare Ray ID、`cf-mitigated`、响应类型和失败响应片段，失败详情也写入 summary。403/challenge 优先查对应 Ray 的 Cloudflare 安全事件；503 优先查 Worker 的 `health_check_failed` 与 D1 状态。不要用跳过 WAF 或忽略失败来消除告警。
+- 2026-10-23 已在 GitHub runner 与 Cloudflare 安全事件中交叉确认：免费 Bot Fight 模式将监控的 GET `/api/health` 判为托管质询（403），原运行 Ray `a4ecc823a96c9e01`，来源 AS8075 Microsoft。免费 Bot Fight 模式不能用 WAF Skip 规则豁免，详见 https://developers.cloudflare.com/bots/get-started/bot-fight-mode/ 。关闭此功能会影响整个 `sololeveling.top` 区域，必须先获得维护者确认；监控脚本继续报告 403，不将挑战响应当成成功。
 - 原 shell 监控在 GitHub 默认 `bash -e` 下会在 curl 非零时提前退出，丢失错误详情；新脚本统一捕获网络/HTTP/JSON 错误。
 - 建议再在 Cloudflare Notifications 加一条 “Workers 错误率/请求失败” 告警作为双保险。
 - 告警责任人：**待填写**（当前为仓库维护者）；处理时限：15 分钟内确认，1 小时内给出结论。
